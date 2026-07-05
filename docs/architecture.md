@@ -41,6 +41,19 @@ The UI will request operations through application-level orchestration added in 
 
 Future external integrations will translate transport and platform failures into explicit results at their project boundaries. The UI will remain responsible for user-facing state. Unexpected failures will be logged without credentials, tokens, or raw sensitive signaling payloads.
 
+## Deployment constraints
+
+Non-admin operation is an architectural boundary, not a packaging preference. Installation, configuration, upgrades, and runtime must work for a standard Windows user:
+
+- Deployment must be unpackaged and self-contained, per-user, or portable where practical and must not require elevation.
+- Mutable application data must use user-scoped locations such as `%LOCALAPPDATA%` or `%APPDATA%`; Program Files and other protected system folders are read-only at runtime.
+- Runtime configuration must not be stored in HKLM. User-scoped files or, when justified, HKCU are permitted.
+- Normal usage must not require Windows services, custom audio drivers, kernel-mode components, or machine-wide dependencies.
+- Network flows must be application-initiated outbound traffic for API, WebSocket signaling, WebRTC, TURN, and STUN. The app must not require inbound firewall ports or attempt to modify firewall rules.
+- Dependency selection must include an elevation review. A dependency that requires administrator rights for normal usage is incompatible and must be rejected or replaced.
+
+The canonical acceptance gate for future architecture and implementation work is the [non-admin checklist](non-admin-checklist.md).
+
 ## Non-goals for the bootstrap
 
 - Authentication or token storage
