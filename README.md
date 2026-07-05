@@ -44,6 +44,8 @@ The app is an unpackaged WinUI 3 executable. Select `SonicRelay.Windows.App` as 
 
 Open the repository's [Releases page](https://github.com/vitorhugo-java/windows_SonicRelay/releases), download `SonicRelay.WindowsPublisher-win-x64-<version>.zip`, and extract it to a user-writable folder such as one under your profile. Run `SonicRelay.Windows.App.exe` directly from the extracted folder. Do not run it as administrator.
 
+Before approving a release, run the [non-admin release smoke test](docs/release-smoke-test.md) from a clean standard-user environment. Every mandatory item is a release gate.
+
 Pushing a tag matching `v*` (for example, `v0.1.0`) builds, tests, and publishes a release for that tag. The release workflow can also be run manually and creates a versioned development release from the selected commit. Each ZIP is self-contained for Windows x64 and includes `BUILD-INFO.txt` with its version, commit SHA, and runtime target.
 
 There is currently no MSIX or installer. The portable ZIP is the supported distribution format so normal use remains per-user and does not require elevation or a machine-wide installation.
@@ -77,4 +79,4 @@ The WebSocket carries signaling control messages only. It does not carry audio; 
 5. WebRTC/Opus publication with one peer connection per viewer.
 6. Reliability, diagnostics, packaging, and release automation.
 
-See [the publisher specification](docs/windows-publisher.md), [architecture notes](docs/architecture.md), and [non-admin checklist](docs/non-admin-checklist.md) for the planned system boundaries.
+See [the publisher specification](docs/windows-publisher.md), [architecture notes](docs/architecture.md), [non-admin checklist](docs/non-admin-checklist.md), and [release smoke test](docs/release-smoke-test.md) for the planned system boundaries and release gates.

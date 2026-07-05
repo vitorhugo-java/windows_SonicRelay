@@ -20,6 +20,7 @@ $requiredPaths = @(
     'docs/windows-publisher.md'
     'docs/architecture.md'
     'docs/non-admin-checklist.md'
+    'docs/release-smoke-test.md'
 )
 
 $missingPaths = $requiredPaths | Where-Object {
@@ -58,6 +59,41 @@ $missingGuardrails = $requiredNonAdminGuardrails | Where-Object {
 
 if ($missingGuardrails.Count -gt 0) {
     Write-Error "Missing non-admin guardrails:`n$($missingGuardrails -join "`n")"
+}
+
+if ($readme -notmatch '\(docs/release-smoke-test\.md\)') {
+    Write-Error 'README.md must link to docs/release-smoke-test.md.'
+}
+
+$releaseSmokeTestPath = Join-Path $root 'docs/release-smoke-test.md'
+if (Test-Path -LiteralPath $releaseSmokeTestPath) {
+    $releaseSmokeTest = Get-Content -Raw -LiteralPath $releaseSmokeTestPath
+    $requiredReleaseSmokeTestGates = @(
+        'standard user'
+        'GitHub Releases'
+        'user-writable folder'
+        'administrator prompt'
+        'Program Files'
+        'Windows service'
+        'drivers'
+        'firewall rules'
+        'open Settings'
+        'backend URL'
+        'attempt login'
+        '%LOCALAPPDATA%\SonicRelay\WindowsPublisher'
+        'clear local tokens and configuration'
+        'missing backend'
+        'missing audio device'
+        'release is blocked'
+    )
+
+    $missingReleaseSmokeTestGates = $requiredReleaseSmokeTestGates | Where-Object {
+        $releaseSmokeTest.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -lt 0
+    }
+
+    if ($missingReleaseSmokeTestGates.Count -gt 0) {
+        Write-Error "Missing release smoke-test gates:`n$($missingReleaseSmokeTestGates -join "`n")"
+    }
 }
 
 $workflowPath = Join-Path $root '.github/workflows/ci.yml'
