@@ -8,7 +8,7 @@ Installing, configuring, and running the Windows Publisher must not require admi
 
 ## Current status
 
-This repository contains the .NET 10 and WinUI 3 foundation plus the typed backend HTTP client layer. WebSocket signaling, WASAPI loopback capture, and WebRTC/Opus publishing remain planned.
+This repository contains the .NET 10 and WinUI 3 foundation, typed backend HTTP clients, and the authenticated WebSocket signaling client. WASAPI loopback capture and WebRTC/Opus publishing remain planned.
 
 ## Prerequisites
 
@@ -28,6 +28,7 @@ Run the focused tests with:
 ```powershell
 dotnet test tests/SonicRelay.Windows.Core.Tests/SonicRelay.Windows.Core.Tests.csproj
 dotnet test tests/SonicRelay.Windows.ApiClient.Tests/SonicRelay.Windows.ApiClient.Tests.csproj
+dotnet test tests/SonicRelay.Windows.Signaling.Tests/SonicRelay.Windows.Signaling.Tests.csproj
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/Repository.Structure.Tests.ps1
 ```
 
@@ -44,6 +45,14 @@ Authentication tokens are stored for the current user at `%LOCALAPPDATA%\SonicRe
 The configured `backendBaseUrl` is used as the `HttpClient.BaseAddress`; no production address is compiled into the application. The typed clients implement login and refresh under `/auth`, current-user lookup, `windows_publisher` device registration/listing, and stream-session creation/active-list/end operations.
 
 Authenticated requests load the current user's DPAPI-protected bearer token. A `401` with an available refresh token causes one refresh request and one retry, and the replacement tokens are saved back to the user-scoped store. HTTP, network, and backend failures are exposed as typed API errors. This layer uses outbound HTTP(S) only and requires no administrator privileges.
+
+## WebSocket signaling client
+
+The configured `signalingBaseUrl` is converted to WS(S) when needed and receives escaped `sessionId` and `deviceId` query parameters. The outbound handshake uses the current user-scoped bearer token. On connection the client sends `publisher.ready`, validates and dispatches supported control envelopes, answers `ping` with `pong`, and exposes connection/reconnection state.
+
+Unexpected transport failures use a conservative 1/2/4-second reconnect sequence. Explicit closure, normal remote closure, cancellation, and `session.ended` close cleanly without reconnecting. Only one active connection is allowed for a session/device identity, while `viewerId` remains on each envelope for future per-viewer routing. SDP and ICE payloads are redacted from safe diagnostic output.
+
+The WebSocket carries signaling control messages only. It does not carry audio; future audio transport belongs to one WebRTC connection per viewer. The client initiates outbound connections only, opens no local server port, changes no firewall rule, and requires no administrator privileges.
 
 ## Planned milestones
 

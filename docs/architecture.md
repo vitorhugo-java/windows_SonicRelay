@@ -11,16 +11,17 @@ flowchart TD
     App --> WebRtc[SonicRelay.Windows.WebRtc]
     CoreTests[SonicRelay.Windows.Core.Tests] --> Core
     ApiTests[SonicRelay.Windows.ApiClient.Tests] --> ApiClient
+    SignalingTests[SonicRelay.Windows.Signaling.Tests] --> Signaling
 ```
 
 - **App** is the WinUI 3 composition root and owns desktop lifecycle and presentation.
 - **Core** will hold application-independent domain state and rules.
 - **ApiClient** will implement typed backend HTTP communication.
-- **Signaling** will manage future WebSocket signaling messages and connection state.
+- **Signaling** manages authenticated outbound WebSocket signaling messages, validated envelopes, connection state, and conservative reconnect behavior. It does not transport audio.
 - **Audio** will own WASAPI loopback capture and audio-frame delivery.
 - **WebRtc** will own peer connections, negotiation, and Opus publication.
 
-At bootstrap time the five capability libraries are intentionally empty. Their project references establish dependency direction without inventing abstractions before requirements exist.
+Capability project references establish dependency direction: Signaling depends on Core for configuration and user-scoped tokens, while Audio and WebRtc remain isolated placeholders until their requirements are implemented.
 
 ## Planned runtime data flow
 
