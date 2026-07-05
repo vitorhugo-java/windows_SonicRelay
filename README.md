@@ -32,6 +32,12 @@ dotnet test tests/SonicRelay.Windows.Signaling.Tests/SonicRelay.Windows.Signalin
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/Repository.Structure.Tests.ps1
 ```
 
+## Continuous integration
+
+GitHub Actions runs CI for every pull request and every push to `main` on a Windows runner. The workflow uses the SDK selected by `global.json`, restores dependencies, builds the complete solution in Release configuration, runs all solution tests plus the repository structure test, and uploads available TRX test results as the `test-results` artifact.
+
+Normal CI requires no repository secrets and does not publish or deploy artifacts. It only validates the existing non-admin application runtime requirements; it introduces no runtime dependency or elevation requirement for users.
+
 The app is an unpackaged WinUI 3 executable. Select `SonicRelay.Windows.App` as the startup project when launching it from an IDE.
 
 ## User configuration and tokens

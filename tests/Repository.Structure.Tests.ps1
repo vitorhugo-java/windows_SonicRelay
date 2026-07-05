@@ -7,6 +7,7 @@ $requiredPaths = @(
     'Directory.Build.props'
     '.editorconfig'
     '.gitignore'
+    '.github/workflows/ci.yml'
     'src/SonicRelay.Windows.App/SonicRelay.Windows.App.csproj'
     'src/SonicRelay.Windows.Core/SonicRelay.Windows.Core.csproj'
     'src/SonicRelay.Windows.ApiClient/SonicRelay.Windows.ApiClient.csproj'
@@ -56,6 +57,34 @@ $missingGuardrails = $requiredNonAdminGuardrails | Where-Object {
 
 if ($missingGuardrails.Count -gt 0) {
     Write-Error "Missing non-admin guardrails:`n$($missingGuardrails -join "`n")"
+}
+
+$workflowPath = Join-Path $root '.github/workflows/ci.yml'
+if (Test-Path -LiteralPath $workflowPath) {
+    $workflow = Get-Content -Raw -LiteralPath $workflowPath
+    $requiredWorkflowPatterns = [ordered]@{
+        'pull request trigger' = '(?m)^\s*pull_request:\s*$'
+        'push trigger' = '(?m)^\s*push:\s*$'
+        'main branch filter' = '(?m)^\s*-\s*main\s*$'
+        'Windows runner' = 'runs-on:\s*windows-latest'
+        '.NET setup' = 'actions/setup-dotnet@v4'
+        'global.json SDK selection' = 'global-json-file:\s*global\.json'
+        'dependency restore' = 'dotnet restore SonicRelay\.Windows\.slnx'
+        'Release build' = 'dotnet build SonicRelay\.Windows\.slnx --configuration Release --no-restore'
+        'solution tests' = 'dotnet test SonicRelay\.Windows\.slnx --configuration Release --no-build --no-restore'
+        'TRX results' = '--logger "trx;LogFilePrefix=sonicrelay"'
+        'repository structure test' = 'tests/Repository\.Structure\.Tests\.ps1'
+        'artifact upload' = 'actions/upload-artifact@v4'
+        'always upload results' = 'if:\s*always\(\)'
+    }
+
+    $missingWorkflowRequirements = $requiredWorkflowPatterns.GetEnumerator() | Where-Object {
+        $workflow -notmatch $_.Value
+    } | ForEach-Object { $_.Key }
+
+    if ($missingWorkflowRequirements.Count -gt 0) {
+        Write-Error "Missing CI workflow requirements:`n$($missingWorkflowRequirements -join "`n")"
+    }
 }
 
 Write-Host "Repository structure verified: $($requiredPaths.Count) required paths found."
