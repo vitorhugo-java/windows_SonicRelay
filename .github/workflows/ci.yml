@@ -5,9 +5,26 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Optional release version, for example 0.1.0. Empty creates a dev release.'
+        required: false
+        type: string
 
+# Release publishing needs contents:write only in the packaging job.
 permissions:
   contents: read
+
+env:
+  SOLUTION_PATH: SonicRelay.Windows.slnx
+  APP_PROJECT_PATH: src/SonicRelay.Windows.App/SonicRelay.Windows.App.csproj
+  CONFIGURATION: Release
+  RUNTIME_ID: win-x64
+  APP_EXE_NAME: SonicRelay.Windows.App.exe
+  PRODUCT_NAME: SonicRelay.WindowsPublisher
 
 jobs:
   build-and-test:
@@ -25,10 +42,10 @@ jobs:
           global-json-file: global.json
 
       - name: Restore dependencies
-        run: dotnet restore SonicRelay.Windows.slnx
+        run: dotnet restore $env:SOLUTION_PATH
 
       - name: Build solution
-        run: dotnet build SonicRelay.Windows.slnx --configuration Release --no-restore
+        run: dotnet build $env:SOLUTION_PATH --configuration $env:CONFIGURATION --no-restore
 
       - name: Run repository structure tests
         shell: powershell
@@ -36,7 +53,7 @@ jobs:
 
       - name: Run .NET tests
         run: >-
-          dotnet test SonicRelay.Windows.slnx --configuration Release --no-build --no-restore
+          dotnet test $env:SOLUTION_PATH --configuration $env:CONFIGURATION --no-build --no-restore
           --logger "trx;LogFilePrefix=sonicrelay"
           --results-directory TestResults
 
@@ -48,3 +65,190 @@ jobs:
           path: TestResults/*.trx
           if-no-files-found: ignore
           retention-days: 14
+
+  package-release:
+    name: Package release assets
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve package metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $manualVersion = '${{ github.event.inputs.release_version }}'
+          $runNumber = '${{ github.run_number }}'
+
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $tagName = '${{ github.ref_name }}'
+          }
+          elseif (-not [string]::IsNullOrWhiteSpace($manualVersion)) {
+            $tagName = if ($manualVersion.StartsWith('v')) { $manualVersion } else { "v$manualVersion" }
+          }
+          else {
+            $tagName = "dev-$runNumber"
+          }
+
+          $displayVersion = if ($tagName.StartsWith('v')) { $tagName.Substring(1) } else { "0.0.$runNumber" }
+          $assetVersion = $displayVersion -replace '[^0-9A-Za-z.-]', '-'
+          $msiVersionBase = ($displayVersion -split '[+-]')[0]
+          $versionParts = @($msiVersionBase.Split('.') | Where-Object { $_ -match '^\d+$' })
+
+          while ($versionParts.Count -lt 3) {
+            $versionParts += '0'
+          }
+
+          $msiVersion = "$($versionParts[0]).$($versionParts[1]).$($versionParts[2])"
+          $isPrerelease = if ($displayVersion -match '-' -or -not $tagName.StartsWith('v')) { 'true' } else { 'false' }
+
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "display_version=$displayVersion" >> $env:GITHUB_OUTPUT
+          "asset_version=$assetVersion" >> $env:GITHUB_OUTPUT
+          "msi_version=$msiVersion" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Restore dependencies
+        run: dotnet restore $env:APP_PROJECT_PATH --runtime $env:RUNTIME_ID
+
+      - name: Publish portable folder
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish/portable'
+
+          dotnet publish $env:APP_PROJECT_PATH `
+            --configuration $env:CONFIGURATION `
+            --runtime $env:RUNTIME_ID `
+            --self-contained true `
+            --no-restore `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishSingleFile=false `
+            -p:DebugType=embedded `
+            -o $publishDir
+
+          @"
+          product=SonicRelay Windows Publisher
+          version=${{ steps.metadata.outputs.display_version }}
+          commit=${{ github.sha }}
+          runtime=$env:RUNTIME_ID
+          configuration=$env:CONFIGURATION
+          builtAtUtc=$((Get-Date).ToUniversalTime().ToString('O'))
+          "@ | Set-Content -Path (Join-Path $publishDir 'BUILD-INFO.txt') -Encoding UTF8
+
+      - name: Publish single-file EXE
+        shell: pwsh
+        run: |
+          $singleFileDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish/single-file'
+
+          # Portable EXE asset. It stays per-user and does not create services, drivers, firewall rules, or admin-only writes.
+          dotnet publish $env:APP_PROJECT_PATH `
+            --configuration $env:CONFIGURATION `
+            --runtime $env:RUNTIME_ID `
+            --self-contained true `
+            --no-restore `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=embedded `
+            -o $singleFileDir
+
+      - name: Install WiX toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 6.*
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          wix --version
+
+      - name: Build ZIP, EXE, and MSI packages
+        shell: pwsh
+        run: |
+          $assetVersion = '${{ steps.metadata.outputs.asset_version }}'
+          $msiVersion = '${{ steps.metadata.outputs.msi_version }}'
+          $distDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/release'
+          $portableDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish/portable'
+          $singleFileDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish/single-file'
+
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+
+          $zipPath = Join-Path $distDir "$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.zip"
+          $exePath = Join-Path $distDir "$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.exe"
+          $msiPath = Join-Path $distDir "$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.msi"
+
+          Compress-Archive -Path (Join-Path $portableDir '*') -DestinationPath $zipPath -Force
+
+          $publishedExe = Join-Path $singleFileDir $env:APP_EXE_NAME
+          if (-not (Test-Path $publishedExe)) {
+            throw "Expected published EXE was not found: $publishedExe"
+          }
+          Copy-Item -Path $publishedExe -Destination $exePath -Force
+
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          wix build packaging/SonicRelay.WindowsPublisher.wxs `
+            -arch x64 `
+            -d ProductVersion=$msiVersion `
+            -d PublishDir=$portableDir `
+            -o $msiPath
+
+          Get-ChildItem -Path $distDir -File -Include *.zip,*.exe,*.msi | ForEach-Object {
+            $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($_.Name)"
+          } | Set-Content -Path (Join-Path $distDir 'checksums-sha256.txt') -Encoding ASCII
+
+          @"
+          # SonicRelay Windows Publisher ${{ steps.metadata.outputs.display_version }}
+
+          Built from `${{ github.sha }}` for `$env:RUNTIME_ID`.
+
+          Assets:
+          - `$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.zip`: portable folder distribution.
+          - `$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.exe`: portable single-file executable.
+          - `$env:PRODUCT_NAME-$env:RUNTIME_ID-$assetVersion.msi`: per-user MSI installer.
+
+          Notes:
+          - The MSI installs under the current user's LocalAppData path and is intentionally per-user.
+          - None of the packages should require administrator privileges for normal app usage.
+          - Packages are currently unsigned.
+          "@ | Set-Content -Path (Join-Path $distDir 'RELEASE-NOTES.md') -Encoding UTF8
+
+      - name: Upload packaged assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets-${{ steps.metadata.outputs.asset_version }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tagName = '${{ steps.metadata.outputs.tag_name }}'
+          $releaseTitle = 'SonicRelay Windows Publisher ${{ steps.metadata.outputs.display_version }}'
+          $notesPath = Join-Path $env:GITHUB_WORKSPACE 'artifacts/release/RELEASE-NOTES.md'
+          $assetPaths = Get-ChildItem -Path 'artifacts/release' -File -Include *.zip,*.exe,*.msi,*.txt | Select-Object -ExpandProperty FullName
+
+          $args = @('release', 'create', $tagName)
+          $args += $assetPaths
+          $args += @('--target', '${{ github.sha }}', '--title', $releaseTitle, '--notes-file', $notesPath)
+
+          if ('${{ steps.metadata.outputs.is_prerelease }}' -eq 'true') {
+            $args += '--prerelease'
+          }
+
+          gh @args
