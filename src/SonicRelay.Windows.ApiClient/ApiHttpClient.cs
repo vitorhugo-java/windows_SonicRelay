@@ -36,6 +36,31 @@ internal sealed class ApiHttpClient(HttpClient httpClient, ITokenStore tokenStor
         return await ReadAsync<TResponse>(response, cancellationToken);
     }
 
+    public async Task SendAsync(
+        HttpMethod method,
+        string path,
+        object? body,
+        bool authenticated,
+        CancellationToken cancellationToken,
+        bool allowRefresh = true)
+    {
+        var tokens = authenticated ? await LoadTokensAsync(cancellationToken) : null;
+        using var response = await SendOnceAsync(method, path, body, tokens?.AccessToken, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized
+            && authenticated
+            && allowRefresh
+            && !string.IsNullOrWhiteSpace(tokens?.RefreshToken))
+        {
+            var refreshed = await RefreshTokensAsync(tokens.RefreshToken, cancellationToken);
+            using var retry = await SendOnceAsync(method, path, body, refreshed.AccessToken, cancellationToken);
+            await EnsureSuccessAsync(retry, cancellationToken);
+            return;
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<TokenSet> RefreshTokensAsync(string refreshToken, CancellationToken cancellationToken)
     {
         var response = await SendAsync<IdentityTokenResponse>(
@@ -88,10 +113,7 @@ internal sealed class ApiHttpClient(HttpClient httpClient, ITokenStore tokenStor
         HttpResponseMessage response,
         CancellationToken cancellationToken)
     {
-        if (!response.IsSuccessStatusCode)
-        {
-            throw await CreateErrorAsync(response, cancellationToken);
-        }
+        await EnsureSuccessAsync(response, cancellationToken);
 
         try
         {
@@ -101,6 +123,14 @@ internal sealed class ApiHttpClient(HttpClient httpClient, ITokenStore tokenStor
         catch (JsonException exception)
         {
             throw new ApiClientException(ApiErrorKind.Unknown, "The backend returned an invalid JSON response.", innerException: exception);
+        }
+    }
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateErrorAsync(response, cancellationToken);
         }
     }
 
@@ -130,18 +160,58 @@ internal sealed class ApiHttpClient(HttpClient httpClient, ITokenStore tokenStor
             using var document = await JsonDocument.ParseAsync(
                 await response.Content.ReadAsStreamAsync(cancellationToken),
                 cancellationToken: cancellationToken);
-            foreach (var property in new[] { "error", "detail", "title" })
+            var root = document.RootElement;
+            foreach (var property in new[] { "error", "detail" })
             {
-                if (document.RootElement.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+                if (root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
                 {
                     return value.GetString();
                 }
+            }
+
+            // ASP.NET Core Identity validation failures use ProblemDetails:
+            // { "errors": { "<code>": ["<description>", ...] } }. Surface the descriptions,
+            // which are already human-readable, in preference to the generic "title".
+            if (TryReadProblemDetailsErrors(root, out var errors))
+            {
+                return errors;
+            }
+
+            if (root.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
+            {
+                return title.GetString();
             }
         }
         catch (JsonException)
         {
         }
         return null;
+    }
+
+    private static bool TryReadProblemDetailsErrors(JsonElement root, out string? message)
+    {
+        message = null;
+        if (!root.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var descriptions = errors.EnumerateObject()
+            .SelectMany(field => field.Value.ValueKind == JsonValueKind.Array
+                ? field.Value.EnumerateArray()
+                : Enumerable.Repeat(field.Value, 1))
+            .Where(value => value.ValueKind == JsonValueKind.String)
+            .Select(value => value.GetString())
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToArray();
+
+        if (descriptions.Length == 0)
+        {
+            return false;
+        }
+
+        message = string.Join(" ", descriptions);
+        return true;
     }
 
     private async Task<TokenSet?> LoadTokensAsync(CancellationToken cancellationToken)

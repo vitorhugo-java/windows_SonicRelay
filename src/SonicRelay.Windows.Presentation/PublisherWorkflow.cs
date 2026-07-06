@@ -45,22 +45,60 @@ public sealed class PublisherWorkflow : IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(email)) return SetValidationErrorAsync("Email is required.");
         if (string.IsNullOrWhiteSpace(password)) return SetValidationErrorAsync("Password is required.");
+        return ExecuteAsync(token => SignInAndPrepareDeviceAsync(email.Trim(), password, token), cancellationToken);
+    }
+
+    public Task RegisterAsync(string email, string password, string confirmPassword, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return SetValidationErrorAsync("Email is required.");
+        if (string.IsNullOrWhiteSpace(password)) return SetValidationErrorAsync("Password is required.");
+        if (string.IsNullOrWhiteSpace(confirmPassword)) return SetValidationErrorAsync("Confirm your password.");
+        if (!string.Equals(password, confirmPassword, StringComparison.Ordinal))
+            return SetValidationErrorAsync("Passwords do not match.");
+
         return ExecuteAsync(async token =>
         {
-            await auth.LoginAsync(new LoginRequest(email.Trim(), password), token);
-            var user = await auth.GetCurrentUserAsync(token);
-            var available = await devices.GetDevicesAsync(token);
-            var device = available.FirstOrDefault(item =>
-                item.Type == "windows_publisher" && item.Platform == "windows" && !item.Revoked)
-                ?? await devices.RegisterWindowsPublisherAsync(new RegisterDeviceRequest(deviceName, null), token);
-            SetState(State with
+            try
             {
-                IsAuthenticated = true,
-                UserDisplayName = user.DisplayName ?? user.Email,
-                DeviceId = device.Id,
-                DeviceName = device.Name
-            }, "Signed in and publisher device is ready.");
+                await auth.RegisterAsync(new RegisterRequest(email.Trim(), password), token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                var message = ToRegisterFriendlyMessage(exception);
+                SetState(State with { ErrorMessage = message }, $"Registration failed: {message}");
+                return;
+            }
+
+            // ASP.NET Core Identity registration does not return tokens, so sign in with the
+            // same credentials to reuse the existing device-preparation flow.
+            try
+            {
+                await SignInAndPrepareDeviceAsync(email.Trim(), password, token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                SetState(
+                    State with { ErrorMessage = "Account created. Please sign in with your new email and password." },
+                    "Account created, but automatic sign-in failed.");
+            }
         }, cancellationToken);
+    }
+
+    private async Task SignInAndPrepareDeviceAsync(string email, string password, CancellationToken cancellationToken)
+    {
+        await auth.LoginAsync(new LoginRequest(email, password), cancellationToken);
+        var user = await auth.GetCurrentUserAsync(cancellationToken);
+        var available = await devices.GetDevicesAsync(cancellationToken);
+        var device = available.FirstOrDefault(item =>
+            item.Type == "windows_publisher" && item.Platform == "windows" && !item.Revoked)
+            ?? await devices.RegisterWindowsPublisherAsync(new RegisterDeviceRequest(deviceName, null), cancellationToken);
+        SetState(State with
+        {
+            IsAuthenticated = true,
+            UserDisplayName = user.DisplayName ?? user.Email,
+            DeviceId = device.Id,
+            DeviceName = device.Name
+        }, "Signed in and publisher device is ready.");
     }
 
     public Task CreateSessionAsync(CancellationToken cancellationToken = default)
@@ -162,6 +200,28 @@ public sealed class PublisherWorkflow : IAsyncDisposable
         AudioCaptureException audioException => audioException.Message,
         _ => exception.Message
     };
+
+    private static string ToRegisterFriendlyMessage(Exception exception) => exception switch
+    {
+        ApiClientException { Kind: ApiErrorKind.NetworkUnavailable } => "The backend network is unavailable. Check the URL and connection.",
+        ApiClientException { Kind: ApiErrorKind.BackendUnavailable } => "The backend is unavailable. Try again shortly.",
+        ApiClientException { Kind: ApiErrorKind.Conflict } => "That email is already registered. Try signing in instead.",
+        ApiClientException api => ClassifyRegisterValidation(api.Message),
+        _ => exception.Message
+    };
+
+    private static string ClassifyRegisterValidation(string detail)
+    {
+        if (Mentions(detail, "already taken") || Mentions(detail, "DuplicateEmail") || Mentions(detail, "DuplicateUserName"))
+            return "That email is already registered. Try signing in instead.";
+        if (Mentions(detail, "InvalidEmail") || Mentions(detail, "is invalid"))
+            return "Enter a valid email address.";
+        if (Mentions(detail, "Password"))
+            return string.IsNullOrWhiteSpace(detail) ? "Choose a stronger password." : detail;
+        return string.IsNullOrWhiteSpace(detail) ? "Registration failed. Check your details and try again." : detail;
+    }
+
+    private static bool Mentions(string value, string term) => value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
     private void OnSignalingStateChanged(SignalingConnectionState state) => SetState(State with { SignalingState = state }, $"Signaling: {state}.");
     private void OnAudioStateChanged(AudioCaptureState state) => SetState(State with { AudioState = state, AudioDiagnostics = audio.Diagnostics });

@@ -1,5 +1,6 @@
 using SonicRelay.Windows.ApiClient.Authentication;
 using SonicRelay.Windows.ApiClient.Devices;
+using SonicRelay.Windows.ApiClient.Errors;
 using SonicRelay.Windows.ApiClient.Sessions;
 using SonicRelay.Windows.Audio;
 using SonicRelay.Windows.Core.Storage;
@@ -18,6 +19,68 @@ public sealed class PublisherWorkflowTests
         await fixture.Workflow.LoginAsync(email, password);
         Assert.Equal(expected, fixture.Workflow.State.ErrorMessage);
         Assert.False(fixture.Auth.LoginCalled);
+    }
+
+    [Theory]
+    [InlineData("", "password", "password", "Email is required.")]
+    [InlineData("user@example.com", "", "password", "Password is required.")]
+    [InlineData("user@example.com", "password", "different", "Passwords do not match.")]
+    public async Task RegisterRejectsInvalidInput(string email, string password, string confirm, string expected)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Workflow.RegisterAsync(email, password, confirm);
+        Assert.Equal(expected, fixture.Workflow.State.ErrorMessage);
+        Assert.False(fixture.Auth.RegisterCalled);
+        Assert.False(fixture.Auth.LoginCalled);
+    }
+
+    [Fact]
+    public async Task SuccessfulRegisterSignsInAfterwards()
+    {
+        await using var fixture = new Fixture();
+
+        await fixture.Workflow.RegisterAsync("user@example.com", "password", "password");
+
+        Assert.Equal(new[] { "register", "login" }, fixture.Auth.Calls);
+        Assert.True(fixture.Workflow.State.IsAuthenticated);
+    }
+
+    [Fact]
+    public async Task SuccessfulRegisterPreparesPublisherDevice()
+    {
+        await using var fixture = new Fixture();
+
+        await fixture.Workflow.RegisterAsync("user@example.com", "password", "password");
+
+        Assert.True(fixture.Devices.RegisterCalled);
+        Assert.Equal(fixture.Devices.LastRegisteredId, fixture.Workflow.State.DeviceId);
+    }
+
+    [Fact]
+    public async Task RegisterFailureIsFriendlyAndSkipsLogin()
+    {
+        await using var fixture = new Fixture();
+        fixture.Auth.RegisterException = new ApiClientException(ApiErrorKind.Validation, "Email 'x' is already taken.");
+
+        await fixture.Workflow.RegisterAsync("user@example.com", "password", "password");
+
+        Assert.False(fixture.Auth.LoginCalled);
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.Equal("That email is already registered. Try signing in instead.", fixture.Workflow.State.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task RegisterWithFailedAutoLoginAsksUserToSignInManually()
+    {
+        await using var fixture = new Fixture();
+        fixture.Auth.Exception = new ApiClientException(ApiErrorKind.Unauthorized, "nope");
+
+        await fixture.Workflow.RegisterAsync("user@example.com", "password", "password");
+
+        Assert.True(fixture.Auth.RegisterCalled);
+        Assert.True(fixture.Auth.LoginCalled);
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.Equal("Account created. Please sign in with your new email and password.", fixture.Workflow.State.ErrorMessage);
     }
 
     [Fact]
@@ -110,14 +173,22 @@ public sealed class PublisherWorkflowTests
 
     private sealed class FakeAuth : IAuthApiClient
     {
-        public bool LoginCalled { get; private set; }
+        public List<string> Calls { get; } = [];
+        public bool LoginCalled => Calls.Contains("login");
+        public bool RegisterCalled => Calls.Contains("register");
         public Exception? Exception { get; set; }
+        public Exception? RegisterException { get; set; }
         public Task<TokenSet> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
         {
-            LoginCalled = true;
+            Calls.Add("login");
             return Exception is null
                 ? Task.FromResult(new TokenSet("access", "refresh", DateTimeOffset.UtcNow.AddHours(1)))
                 : Task.FromException<TokenSet>(Exception);
+        }
+        public Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("register");
+            return RegisterException is null ? Task.CompletedTask : Task.FromException(RegisterException);
         }
         public Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default) =>
@@ -128,12 +199,15 @@ public sealed class PublisherWorkflowTests
     {
         public List<DeviceResponse> Items { get; } = [];
         public bool RegisterCalled { get; private set; }
+        public Guid? LastRegisteredId { get; private set; }
         public Task<IReadOnlyList<DeviceResponse>> GetDevicesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<DeviceResponse>>(Items);
         public Task<DeviceResponse> RegisterWindowsPublisherAsync(RegisterDeviceRequest request, CancellationToken cancellationToken = default)
         {
             RegisterCalled = true;
-            return Task.FromResult(Device(request.Name, revoked: false));
+            var device = Device(request.Name, revoked: false);
+            LastRegisteredId = device.Id;
+            return Task.FromResult(device);
         }
     }
 

@@ -5,7 +5,10 @@
     <TextBox x:Name="BackendUrlBox" Header="Backend URL" Text="https://localhost:5001/" PlaceholderText="https://relay.example.com/"/>
     <TextBox x:Name="EmailBox" Header="Email" InputScope="EmailSmtpAddress"/>
     <PasswordBox x:Name="PasswordBox" Header="Password"/>
-    <Button x:Name="LoginButton" Content="Sign in and prepare device" Click="Login_Click" HorizontalAlignment="Left"/>
+    <StackPanel Orientation="Horizontal" Spacing="12">
+      <Button x:Name="LoginButton" Content="Sign in and prepare device" Click="Login_Click" Style="{StaticResource AccentButtonStyle}"/>
+      <Button x:Name="CreateAccountButton" Content="Create account" Click="CreateAccount_Click"/>
+    </StackPanel>
     <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" HorizontalAlignment="Left"/>
     <InfoBar x:Name="ErrorBar" Severity="Error" IsOpen="False" IsClosable="False"/>
     <Grid ColumnSpacing="12" RowSpacing="8">

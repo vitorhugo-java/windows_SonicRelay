@@ -5,11 +5,14 @@ namespace SonicRelay.Windows.ApiClient.Authentication;
 public interface IAuthApiClient
 {
     Task<TokenSet> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
+    Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
     Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
     Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record LoginRequest(string Email, string Password);
+
+public sealed record RegisterRequest(string Email, string Password);
 
 public sealed record CurrentUserResponse(
     Guid Id,

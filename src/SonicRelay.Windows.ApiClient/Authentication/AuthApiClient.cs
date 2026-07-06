@@ -20,6 +20,17 @@ public sealed class AuthApiClient(HttpClient httpClient, ITokenStore tokenStore)
         return tokens;
     }
 
+    public Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default) =>
+        // ASP.NET Core Identity's /register returns success with no body and no tokens,
+        // so this sends an unauthenticated request and never persists tokens.
+        _api.SendAsync(
+            HttpMethod.Post,
+            "/auth/register",
+            request,
+            authenticated: false,
+            cancellationToken,
+            allowRefresh: false);
+
     public Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) =>
         _api.RefreshTokensAsync(refreshToken, cancellationToken);
 

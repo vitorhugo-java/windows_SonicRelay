@@ -40,13 +40,7 @@ public sealed partial class ConnectionPage : Page
     private async void Login_Click(object sender, RoutedEventArgs e)
     {
         ErrorBar.IsOpen = false;
-        if (!Uri.TryCreate(BackendUrlBox.Text?.Trim(), UriKind.Absolute, out var backend)
-            || backend.Scheme is not ("http" or "https"))
-        {
-            ErrorBar.Message = "Backend URL is required and must use HTTP or HTTPS.";
-            ErrorBar.IsOpen = true;
-            return;
-        }
+        if (!TryGetBackend(out var backend)) return;
         try
         {
             await App.CurrentApp.ConfigureBackendAsync(backend);
@@ -60,6 +54,62 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
+    private async void CreateAccount_Click(object sender, RoutedEventArgs e)
+    {
+        ErrorBar.IsOpen = false;
+        if (!TryGetBackend(out var backend)) return;
+
+        var emailBox = new TextBox { Header = "Email", Text = EmailBox.Text ?? string.Empty };
+        var passwordBox = new PasswordBox { Header = "Password" };
+        var confirmBox = new PasswordBox { Header = "Confirm password" };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(emailBox);
+        content.Children.Add(passwordBox);
+        content.Children.Add(confirmBox);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Create account",
+            PrimaryButtonText = "Create account",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            Content = content
+        };
+
+        try
+        {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            await App.CurrentApp.ConfigureBackendAsync(backend);
+            await App.CurrentApp.Runtime!.Workflow.RegisterAsync(
+                emailBox.Text, passwordBox.Password, confirmBox.Password);
+            EmailBox.Text = emailBox.Text;
+        }
+        catch (Exception exception)
+        {
+            ErrorBar.Message = exception.Message;
+            ErrorBar.IsOpen = true;
+        }
+        finally
+        {
+            // Never keep the entered secrets around after the dialog closes.
+            passwordBox.Password = string.Empty;
+            confirmBox.Password = string.Empty;
+        }
+    }
+
+    private bool TryGetBackend(out Uri backend)
+    {
+        if (Uri.TryCreate(BackendUrlBox.Text?.Trim(), UriKind.Absolute, out backend!)
+            && backend.Scheme is "http" or "https")
+        {
+            return true;
+        }
+        ErrorBar.Message = "Backend URL is required and must use HTTP or HTTPS.";
+        ErrorBar.IsOpen = true;
+        return false;
+    }
+
     private void OnStateChanged(PublisherSnapshot state) => DispatcherQueue.TryEnqueue(() => Render(state));
 
     private void Render(PublisherSnapshot? state)
@@ -68,6 +118,7 @@ public sealed partial class ConnectionPage : Page
         DeviceStatusText.Text = state?.DeviceName ?? "Not registered";
         BusyRing.IsActive = state?.IsBusy == true;
         LoginButton.IsEnabled = state?.IsBusy != true;
+        CreateAccountButton.IsEnabled = state?.IsBusy != true;
         ErrorBar.Message = state?.ErrorMessage ?? string.Empty;
         ErrorBar.IsOpen = !string.IsNullOrWhiteSpace(state?.ErrorMessage);
     }

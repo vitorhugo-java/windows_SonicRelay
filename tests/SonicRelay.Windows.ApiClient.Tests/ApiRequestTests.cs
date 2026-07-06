@@ -33,6 +33,44 @@ public sealed class ApiRequestTests
     }
 
     [Fact]
+    public async Task RegisterPostsToIdentityRouteWithCamelCaseBodyAndNoBearer()
+    {
+        HttpRequestMessage? captured = null;
+        string? body = null;
+        var handler = new FakeHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            captured = request;
+            body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var store = new MemoryTokenStore();
+
+        await new AuthApiClient(TestClient.Create(handler), store)
+            .RegisterAsync(new RegisterRequest("new@example.com", "secret"));
+
+        Assert.Equal(HttpMethod.Post, captured!.Method);
+        Assert.Equal("/auth/register", captured.RequestUri!.AbsolutePath);
+        Assert.Null(captured.Headers.Authorization);
+        Assert.Equal("""{"email":"new@example.com","password":"secret"}""", body);
+        Assert.Null(store.Tokens);
+    }
+
+    [Fact]
+    public async Task RegisterSurfacesIdentityValidationErrors()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => Task.FromResult(FakeHttpMessageHandler.Json(
+            HttpStatusCode.BadRequest,
+            """{"title":"One or more validation errors occurred.","status":400,"errors":{"DuplicateUserName":["Email 'new@example.com' is already taken."]}}""")));
+
+        var error = await Assert.ThrowsAsync<Errors.ApiClientException>(() =>
+            new AuthApiClient(TestClient.Create(handler), new MemoryTokenStore())
+                .RegisterAsync(new RegisterRequest("new@example.com", "secret")));
+
+        Assert.Equal(Errors.ApiErrorKind.Validation, error.Kind);
+        Assert.Contains("already taken", error.Message);
+    }
+
+    [Fact]
     public async Task CurrentUserUsesBearerToken()
     {
         HttpRequestMessage? captured = null;
