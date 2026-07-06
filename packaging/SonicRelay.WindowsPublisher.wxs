@@ -1,0 +1,28 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="SonicRelay Windows Publisher"
+    Manufacturer="SonicRelay"
+    Version="$(ProductVersion)"
+    UpgradeCode="{8B20DA7D-91F9-4F9A-AF4A-8D8BB2AF71C0}"
+    Scope="perUser">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of SonicRelay Windows Publisher is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="SonicRelayRootFolder" Name="SonicRelay">
+        <Directory Id="INSTALLFOLDER" Name="WindowsPublisher" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="SonicRelay Windows Publisher" Level="1">
+      <ComponentGroupRef Id="PublishedAppComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="PublishedAppComponents" Directory="INSTALLFOLDER">
+      <Files Include="$(PublishDir)\**" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>
