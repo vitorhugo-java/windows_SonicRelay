@@ -12,12 +12,27 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        TrySetWindowIcon();
         ConfigureBackdrop();
         ShellNavigation.SelectedItem = ShellNavigation.MenuItems[0];
         ContentFrame.Navigate(typeof(DashboardPage));
         App.CurrentApp.RuntimeChanged += OnRuntimeChanged;
         Closed += OnClosed;
         OnRuntimeChanged(App.CurrentApp.Runtime);
+    }
+
+    // WinUI does not inherit the .exe icon for the title bar / taskbar, so set it
+    // explicitly from the bundled multi-size icon. Best-effort: never block startup.
+    private void TrySetWindowIcon()
+    {
+        try
+        {
+            AppWindow.SetIcon("Assets/app.ico");
+        }
+        catch
+        {
+            // Icon is cosmetic; ignore load failures (e.g. missing asset in odd run configs).
+        }
     }
 
     private void OnRuntimeChanged(PublisherRuntime? runtime)
