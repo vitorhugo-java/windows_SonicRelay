@@ -33,12 +33,12 @@ public sealed class SignalingClientTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await client.ConnectAsync("session-1", "device-1");
 
-        socket.QueueText(new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", "viewer-7"));
+        socket.QueueText(new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", From: "viewer-7"));
         var dispatched = await handler.NextAsync(timeout.Token);
         socket.QueueText(new SignalingMessageEnvelope(SignalingMessageTypes.Ping, "session-1"));
         await WaitUntilAsync(() => socket.Sent.Count == 2, timeout.Token);
 
-        Assert.Equal("viewer-7", dispatched.ViewerId);
+        Assert.Equal("viewer-7", dispatched.From);
         Assert.Equal(SignalingMessageTypes.Pong, SignalingMessageEnvelope.Deserialize(socket.Sent[1]).Type);
     }
 
@@ -52,10 +52,10 @@ public sealed class SignalingClientTests
         await client.ConnectAsync("session-1", "device-1");
 
         socket.QueueText("{not-json}");
-        socket.QueueText(new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", "viewer-9"));
+        socket.QueueText(new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", From: "viewer-9"));
         var dispatched = await handler.NextAsync(timeout.Token);
 
-        Assert.Equal("viewer-9", dispatched.ViewerId);
+        Assert.Equal("viewer-9", dispatched.From);
         Assert.Equal(SignalingConnectionState.Connected, client.State);
     }
 

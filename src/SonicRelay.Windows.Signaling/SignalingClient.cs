@@ -211,7 +211,7 @@ public sealed class SignalingClient : ISignalingClient
 
                 if (message.Type == SignalingMessageTypes.Ping)
                 {
-                    await SendAsync(new SignalingMessageEnvelope(SignalingMessageTypes.Pong, activeSessionId, message.ViewerId), cancellationToken);
+                    await SendAsync(new SignalingMessageEnvelope(SignalingMessageTypes.Pong, activeSessionId, message.From), cancellationToken);
                 }
 
                 foreach (var handler in handlers)

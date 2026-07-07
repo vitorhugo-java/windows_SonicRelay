@@ -24,16 +24,21 @@ public sealed class SignalingMessageEnvelopeTests
     public void SerializeAndDeserializeRoundTripsSupportedTypes(string type)
     {
         using var payload = JsonDocument.Parse("{\"candidate\":\"value\"}");
-        var envelope = new SignalingMessageEnvelope(type, "session-1", "viewer-2", payload.RootElement.Clone());
+        var envelope = new SignalingMessageEnvelope(type, "session-1", "viewer-2", payload.RootElement.Clone(), From: "publisher-9");
 
         var json = envelope.Serialize();
         var parsed = SignalingMessageEnvelope.Deserialize(json);
 
         Assert.Equal(type, parsed.Type);
         Assert.Equal("session-1", parsed.SessionId);
-        Assert.Equal("viewer-2", parsed.ViewerId);
+        Assert.Equal("viewer-2", parsed.To);
+        Assert.Equal("publisher-9", parsed.From);
         Assert.Equal("value", parsed.Payload?.GetProperty("candidate").GetString());
         Assert.Contains("\"sessionId\":\"session-1\"", json, StringComparison.Ordinal);
+        // The backend routes on `to`/`from`; the legacy `viewerId` field must be gone.
+        Assert.Contains("\"to\":\"viewer-2\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"from\":\"publisher-9\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("viewerId", json, StringComparison.Ordinal);
     }
 
     [Theory]

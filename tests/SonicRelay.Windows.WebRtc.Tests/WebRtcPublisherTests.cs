@@ -11,7 +11,7 @@ public sealed class WebRtcPublisherTests
         var context = CreateContext();
         await using var publisher = context.Publisher;
 
-        var ready = new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", "viewer-1");
+        var ready = new SignalingMessageEnvelope(SignalingMessageTypes.ViewerReady, "session-1", From: "viewer-1");
         await publisher.HandleAsync(ready);
         await publisher.HandleAsync(ready);
 
@@ -21,9 +21,47 @@ public sealed class WebRtcPublisherTests
         var offer = Assert.Single(context.Signaling.Messages);
         Assert.Equal(SignalingMessageTypes.WebRtcOffer, offer.Type);
         Assert.Equal("session-1", offer.SessionId);
-        Assert.Equal("viewer-1", offer.ViewerId);
+        Assert.Equal("viewer-1", offer.To);
         Assert.Equal("offer-viewer-1", offer.Payload!.Value.GetProperty("sdp").GetString());
         Assert.Equal(1, publisher.Diagnostics.ViewerConnectionCount);
+    }
+
+    [Fact]
+    public async Task ViewerSessionJoinedRegistersPeerAndSendsOfferOnlyOnce()
+    {
+        var context = CreateContext();
+        await using var publisher = context.Publisher;
+
+        var joined = new SignalingMessageEnvelope(
+            SignalingMessageTypes.SessionJoined,
+            "session-1",
+            Payload: JsonSerializer.SerializeToElement(new { participantId = "viewer-1", role = "viewer" }),
+            From: "viewer-1");
+        await publisher.HandleAsync(joined);
+        await publisher.HandleAsync(joined);
+
+        var peer = Assert.Single(context.Factory.Peers);
+        Assert.Equal("viewer-1", peer.ViewerId);
+        Assert.Equal(1, peer.OfferCount);
+        var offer = Assert.Single(context.Signaling.Messages);
+        Assert.Equal(SignalingMessageTypes.WebRtcOffer, offer.Type);
+        Assert.Equal("viewer-1", offer.To);
+    }
+
+    [Fact]
+    public async Task NonViewerSessionJoinedDoesNotOffer()
+    {
+        var context = CreateContext();
+        await using var publisher = context.Publisher;
+
+        // The publisher's own join carries no `from`; another publisher would be role=publisher.
+        await publisher.HandleAsync(new(SignalingMessageTypes.SessionJoined, "session-1",
+            Payload: JsonSerializer.SerializeToElement(new { participantId = "pub", role = "publisher" })));
+        await publisher.HandleAsync(new(SignalingMessageTypes.SessionJoined, "session-1",
+            Payload: JsonSerializer.SerializeToElement(new { participantId = "pub2", role = "publisher" }), From: "pub2"));
+
+        Assert.Empty(context.Factory.Peers);
+        Assert.Empty(context.Signaling.Messages);
     }
 
     [Fact]
@@ -36,8 +74,8 @@ public sealed class WebRtcPublisherTests
         var answer = JsonSerializer.SerializeToElement(new WebRtcSessionDescription("answer", "answer-sdp"));
         var candidate = JsonSerializer.SerializeToElement(new WebRtcIceCandidate("candidate-2", "audio", 0));
 
-        await publisher.HandleAsync(new(SignalingMessageTypes.WebRtcAnswer, "session-1", "viewer-2", answer));
-        await publisher.HandleAsync(new(SignalingMessageTypes.WebRtcIceCandidate, "session-1", "viewer-2", candidate));
+        await publisher.HandleAsync(new(SignalingMessageTypes.WebRtcAnswer, "session-1", Payload: answer, From: "viewer-2"));
+        await publisher.HandleAsync(new(SignalingMessageTypes.WebRtcIceCandidate, "session-1", Payload: candidate, From: "viewer-2"));
 
         var first = context.Factory.Peers.Single(peer => peer.ViewerId == "viewer-1");
         var second = context.Factory.Peers.Single(peer => peer.ViewerId == "viewer-2");
@@ -59,7 +97,7 @@ public sealed class WebRtcPublisherTests
 
         var message = Assert.Single(context.Signaling.Messages);
         Assert.Equal(SignalingMessageTypes.WebRtcIceCandidate, message.Type);
-        Assert.Equal("viewer-1", message.ViewerId);
+        Assert.Equal("viewer-1", message.To);
         Assert.Equal("local-candidate", message.Payload!.Value.GetProperty("candidate").GetString());
     }
 
@@ -91,7 +129,7 @@ public sealed class WebRtcPublisherTests
         await ReadyAsync(publisher, "viewer-1");
         await ReadyAsync(publisher, "viewer-2");
 
-        await publisher.HandleAsync(new(SignalingMessageTypes.SessionLeft, "session-1", "viewer-1"));
+        await publisher.HandleAsync(new(SignalingMessageTypes.SessionLeft, "session-1", From: "viewer-1"));
 
         Assert.True(context.Factory.Peers[0].Disposed);
         Assert.False(context.Factory.Peers[1].Disposed);
@@ -111,7 +149,7 @@ public sealed class WebRtcPublisherTests
         await ReadyAsync(publisher, "viewer-1");
 
         await Assert.ThrowsAsync<WebRtcPublisherException>(() => publisher.HandleAsync(
-            new(SignalingMessageTypes.WebRtcAnswer, "session-1", "viewer-1", JsonSerializer.SerializeToElement(new { wrong = true }))));
+            new(SignalingMessageTypes.WebRtcAnswer, "session-1", Payload: JsonSerializer.SerializeToElement(new { wrong = true }), From: "viewer-1")));
 
         Assert.NotNull(publisher.Diagnostics.LastError);
     }
@@ -131,7 +169,7 @@ public sealed class WebRtcPublisherTests
     }
 
     private static async Task ReadyAsync(WebRtcPublisher publisher, string viewerId) =>
-        await publisher.HandleAsync(new(SignalingMessageTypes.ViewerReady, "session-1", viewerId));
+        await publisher.HandleAsync(new(SignalingMessageTypes.ViewerReady, "session-1", From: viewerId));
 
     private static TestContext CreateContext()
     {

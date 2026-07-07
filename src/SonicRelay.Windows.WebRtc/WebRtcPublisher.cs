@@ -33,6 +33,9 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
         {
             switch (message.Type)
             {
+                case SignalingMessageTypes.SessionJoined:
+                    await HandleSessionJoinedAsync(message, cancellationToken);
+                    break;
                 case SignalingMessageTypes.ViewerReady:
                     await HandleViewerReadyAsync(message, cancellationToken);
                     break;
@@ -44,9 +47,9 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
                     ValidateSession(message);
                     await peers.AddRemoteIceCandidateAsync(RequireViewerId(message), DeserializePayload<WebRtcIceCandidate>(message), cancellationToken);
                     break;
-                case SignalingMessageTypes.SessionLeft when message.ViewerId is not null:
+                case SignalingMessageTypes.SessionLeft when message.From is not null:
                     ValidateSession(message);
-                    await peers.RemoveViewerAsync(message.ViewerId, cancellationToken);
+                    await peers.RemoveViewerAsync(message.From, cancellationToken);
                     break;
                 case SignalingMessageTypes.SessionEnded:
                     ValidateSession(message);
@@ -78,12 +81,31 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
         }
     }
 
+    // A viewer joining the session is broadcast to the publisher as `session.joined`
+    // with the viewer's participant id in `from`. The publisher is the offerer, so it
+    // registers the viewer and sends the offer directly (the viewer answers it).
+    private async Task HandleSessionJoinedAsync(SignalingMessageEnvelope message, CancellationToken cancellationToken)
+    {
+        var sessionId = RequireSessionId(message);
+        // The publisher's own join (from == null) simply establishes the active session.
+        activeSessionId ??= sessionId;
+        if (!IsViewerJoin(message)) return;
+        ValidateSession(message);
+        await OfferToViewerAsync(sessionId, message.From!, cancellationToken);
+    }
+
+    // Retained for viewers that still announce readiness explicitly; idempotent with
+    // the `session.joined`-driven offer above because RegisterViewerAsync dedupes.
     private async Task HandleViewerReadyAsync(SignalingMessageEnvelope message, CancellationToken cancellationToken)
     {
         var sessionId = RequireSessionId(message);
-        if (activeSessionId is null) activeSessionId = sessionId;
+        activeSessionId ??= sessionId;
         ValidateSession(message);
-        var viewerId = RequireViewerId(message);
+        await OfferToViewerAsync(sessionId, RequireViewerId(message), cancellationToken);
+    }
+
+    private async Task OfferToViewerAsync(string sessionId, string viewerId, CancellationToken cancellationToken)
+    {
         var registration = await peers.RegisterViewerAsync(viewerId, cancellationToken);
         if (!registration.WasCreated) return;
         try
@@ -102,6 +124,15 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
             await peers.RemoveViewerAsync(viewerId, CancellationToken.None);
             throw;
         }
+    }
+
+    private static bool IsViewerJoin(SignalingMessageEnvelope message)
+    {
+        if (string.IsNullOrWhiteSpace(message.From)) return false;
+        if (message.Payload is not { } payload || payload.ValueKind != JsonValueKind.Object) return false;
+        return payload.TryGetProperty("role", out var role)
+            && role.ValueKind == JsonValueKind.String
+            && string.Equals(role.GetString(), "viewer", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task SendLocalIceCandidateAsync(
@@ -135,8 +166,8 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
             : throw new WebRtcPublisherException("A signaling session ID is required.");
 
     private static string RequireViewerId(SignalingMessageEnvelope message) =>
-        !string.IsNullOrWhiteSpace(message.ViewerId)
-            ? message.ViewerId
+        !string.IsNullOrWhiteSpace(message.From)
+            ? message.From
             : throw new WebRtcPublisherException("A signaling viewer ID is required.");
 
     private static T DeserializePayload<T>(SignalingMessageEnvelope message)

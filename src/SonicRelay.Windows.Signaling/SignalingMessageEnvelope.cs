@@ -6,8 +6,9 @@ namespace SonicRelay.Windows.Signaling;
 public sealed record SignalingMessageEnvelope(
     string Type,
     string? SessionId = null,
-    string? ViewerId = null,
-    JsonElement? Payload = null)
+    string? To = null,
+    JsonElement? Payload = null,
+    string? From = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -51,7 +52,8 @@ public sealed record SignalingMessageEnvelope(
         {
             type = Type,
             sessionId = SessionId,
-            viewerId = ViewerId,
+            to = To,
+            from = From,
             payload = "[REDACTED]"
         }, JsonOptions);
     }
