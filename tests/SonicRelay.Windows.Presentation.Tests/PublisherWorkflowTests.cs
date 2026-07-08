@@ -186,6 +186,49 @@ public sealed class PublisherWorkflowTests
         Assert.Contains("network detail", fixture.Workflow.State.ErrorMessage);
     }
 
+    [Fact]
+    public async Task RestoreSessionAuthenticatesAndReusesExistingDevice()
+    {
+        await using var fixture = new Fixture();
+        // A persisted session exists for this machine's already-registered device.
+        fixture.Devices.Items.Add(Device("Test PC", revoked: false));
+
+        await fixture.Workflow.RestoreSessionAsync();
+
+        Assert.True(fixture.Workflow.State.IsAuthenticated);
+        Assert.True(fixture.Auth.GetCurrentUserCalled);
+        Assert.False(fixture.Devices.RegisterCalled); // reused, not re-registered
+        Assert.Equal(fixture.Devices.Items[0].Id, fixture.Workflow.State.DeviceId);
+        Assert.Null(fixture.Workflow.State.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task RestoreSessionWithoutValidSessionReturnsToLogin()
+    {
+        await using var fixture = new Fixture();
+        fixture.Auth.GetCurrentUserException =
+            new ApiClientException(ApiErrorKind.Unauthorized, "Unauthorized.");
+
+        await fixture.Workflow.RestoreSessionAsync();
+
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.True(fixture.Auth.LogoutCalled); // stored tokens cleared
+        Assert.Null(fixture.Workflow.State.ErrorMessage); // no alarming banner
+    }
+
+    [Fact]
+    public async Task RestoreSessionStaysSignedOutWithoutBannerOnNetworkError()
+    {
+        await using var fixture = new Fixture();
+        fixture.Auth.GetCurrentUserException =
+            new ApiClientException(ApiErrorKind.NetworkUnavailable, "The backend network is unavailable.");
+
+        await fixture.Workflow.RestoreSessionAsync();
+
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.Null(fixture.Workflow.State.ErrorMessage);
+    }
+
     private static DeviceResponse Device(string name, bool revoked) =>
         new(Guid.NewGuid(), name, "windows_publisher", "windows", null, true, revoked, null, DateTimeOffset.UtcNow);
 
@@ -226,8 +269,15 @@ public sealed class PublisherWorkflowTests
             return RegisterException is null ? Task.CompletedTask : Task.FromException(RegisterException);
         }
         public Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new CurrentUserResponse(Guid.NewGuid(), "user@example.com", "User", true, DateTimeOffset.UtcNow, null));
+        public Exception? GetCurrentUserException { get; set; }
+        public bool GetCurrentUserCalled { get; private set; }
+        public Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+        {
+            GetCurrentUserCalled = true;
+            return GetCurrentUserException is null
+                ? Task.FromResult(new CurrentUserResponse(Guid.NewGuid(), "user@example.com", "User", true, DateTimeOffset.UtcNow, null))
+                : Task.FromException<CurrentUserResponse>(GetCurrentUserException);
+        }
         public bool LogoutCalled => Calls.Contains("logout");
         public Task LogoutAsync(CancellationToken cancellationToken = default)
         {

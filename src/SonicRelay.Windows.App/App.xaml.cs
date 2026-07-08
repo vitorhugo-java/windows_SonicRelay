@@ -31,6 +31,9 @@ public partial class App : Application
         runtime = replacement;
         RuntimeChanged?.Invoke(runtime);
         if (previous is not null) await previous.DisposeAsync();
+        // Restore a persisted session (refresh + /auth/me) so the user stays signed
+        // in across restarts. Non-blocking; the UI reacts to workflow StateChanged.
+        _ = replacement.Workflow.RestoreSessionAsync();
     }
 
     public async Task DisposeRuntimeAsync()

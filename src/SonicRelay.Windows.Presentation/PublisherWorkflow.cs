@@ -84,9 +84,46 @@ public sealed class PublisherWorkflow : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Restores a persisted session on startup. <see cref="IAuthApiClient.GetCurrentUserAsync"/>
+    /// is authenticated, so the HTTP layer transparently refreshes an expired access
+    /// token with the stored refresh token. A missing session or an invalid refresh
+    /// token surfaces as <see cref="ApiErrorKind.Unauthorized"/>, which clears local
+    /// auth and returns the user to sign-in; transient network/backend errors leave
+    /// the app unauthenticated silently so the user can retry.
+    /// </summary>
+    public Task RestoreSessionAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(async token =>
+        {
+            try
+            {
+                await PrepareAuthenticatedStateAsync(token);
+            }
+            catch (ApiClientException exception) when (exception.Kind == ApiErrorKind.Unauthorized)
+            {
+                // No stored session, or the refresh token is no longer valid.
+                try { await auth.LogoutAsync(token); } catch { }
+                SetState(new PublisherSnapshot { AudioDiagnostics = audio.Diagnostics });
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Backend/network unreachable at startup: stay signed out without an
+                // alarming banner; the user can retry once connectivity returns.
+                SetState(new PublisherSnapshot { AudioDiagnostics = audio.Diagnostics });
+            }
+        }, cancellationToken);
+
     private async Task SignInAndPrepareDeviceAsync(string email, string password, CancellationToken cancellationToken)
     {
         await auth.LoginAsync(new LoginRequest(email, password), cancellationToken);
+        await PrepareAuthenticatedStateAsync(cancellationToken);
+    }
+
+    // Confirms the signed-in user via /auth/me and ensures this machine's publisher
+    // device exists (reusing it when present), then publishes the authenticated
+    // snapshot. Shared by fresh sign-in and startup session restore.
+    private async Task PrepareAuthenticatedStateAsync(CancellationToken cancellationToken)
+    {
         var user = await auth.GetCurrentUserAsync(cancellationToken);
         var available = await devices.GetDevicesAsync(cancellationToken);
         // Match the publisher device for *this* machine by its hostname. The same account

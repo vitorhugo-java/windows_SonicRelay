@@ -61,6 +61,10 @@ The Windows client follows the backend's documented routes: `/auth/login`, `/aut
 
 These clients attach the stored opaque bearer token, refresh and retry once after an unauthorized response when possible, and map authorization, validation, conflict, network, backend, and unknown failures into typed errors. They carry control-plane JSON only; no audio or WebSocket signaling passes through this layer.
 
+### Persistent session
+
+The refresh token is persisted per user, DPAPI-protected, in `tokens.dat` under `%LocalAppData%\SonicRelay\WindowsPublisher` (`UserScopedTokenStore`); tokens are never written in plaintext or logged. On startup — and whenever the backend is (re)configured — `PublisherWorkflow.RestoreSessionAsync` calls `/auth/me` (which transparently refreshes an expired access token using the stored refresh token) and re-resolves this machine's `windows_publisher` device, so the user stays signed in across app restarts and reboots without re-entering credentials. An invalid/expired refresh token clears local auth and returns to the sign-in screen; a transient network error leaves the app signed out without an error banner so the user can retry. The publisher device is matched by hostname and reused, so restarts never create duplicate devices. Logout clears the stored tokens and resets the session/device cache.
+
 ## WASAPI loopback capture
 
 The Audio capability opens the default Windows render endpoint in WASAPI shared loopback mode. This is a user-mode Core Audio API: it installs no driver, starts no service, changes no global device setting, and requires no administrator privilege. The Audio page can start, pause, resume, and stop capture while displaying the selected endpoint, native mix format, live peak activity, captured frame/byte counters, state, and the last mapped error.
