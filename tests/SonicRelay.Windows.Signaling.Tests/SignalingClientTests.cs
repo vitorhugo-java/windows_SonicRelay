@@ -1,6 +1,7 @@
 using SonicRelay.Windows.Core.Configuration;
 using SonicRelay.Windows.Core.Storage;
 using SonicRelay.Windows.Signaling.WebSockets;
+using System.Net;
 using System.Net.WebSockets;
 
 namespace SonicRelay.Windows.Signaling.Tests;
@@ -176,6 +177,35 @@ public sealed class SignalingClientTests
         Assert.Equal(
             [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(16)],
             delay.Delays);
+    }
+
+    [Fact]
+    public async Task SessionGoneDuringReconnectStopsRetryingAndReleasesTheSession()
+    {
+        var initial = new FakeWebSocketConnection();
+        var gone = new FakeWebSocketConnection
+        {
+            ConnectException = new SignalingSessionGoneException(HttpStatusCode.Gone),
+        };
+        var fresh = new FakeWebSocketConnection();
+        var factory = new FakeWebSocketFactory(initial, gone, fresh);
+        var delay = new ImmediateReconnectDelay();
+        await using var client = CreateClient(factory, delay: delay);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await client.ConnectAsync("session-1", "device-1");
+
+        // The socket drops (transient), and the single reconnect finds the session gone.
+        initial.QueueClose(WebSocketCloseStatus.EndpointUnavailable);
+        await WaitUntilAsync(() => client.State == SignalingConnectionState.Closed, timeout.Token);
+
+        // Exactly one reconnect attempt was made — no infinite 410 loop.
+        Assert.Equal(2, factory.CreatedCount);
+
+        // The identity is released, so a brand-new session starts without the
+        // "already active for another session" lock.
+        await client.ConnectAsync("session-2", "device-1");
+        Assert.Equal(3, factory.CreatedCount);
+        Assert.Equal(SignalingConnectionState.Connected, client.State);
     }
 
     [Fact]

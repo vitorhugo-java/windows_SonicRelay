@@ -142,6 +142,35 @@ public sealed class WebRtcPublisherTests
     }
 
     [Fact]
+    public async Task NewSessionSupersedesStalePeersAndBecomesActive()
+    {
+        var context = CreateContext();
+        await using var publisher = context.Publisher;
+
+        // A viewer connects on session-1, then that session dies without a clean
+        // `session.ended` (e.g. the viewer crashed and the server reaped it).
+        await ReadyAsync(publisher, "viewer-1");
+        Assert.Equal(1, publisher.Diagnostics.ViewerConnectionCount);
+
+        // The publisher (re)joins a brand-new session; its own join carries no `from`.
+        await publisher.HandleAsync(new(SignalingMessageTypes.SessionJoined, "session-2",
+            Payload: JsonSerializer.SerializeToElement(new { participantId = "pub", role = "publisher" })));
+
+        // Stale peers from session-1 are torn down and the new session is adopted.
+        Assert.True(context.Factory.Peers[0].Disposed);
+        Assert.Equal(0, publisher.Diagnostics.ViewerConnectionCount);
+
+        // A viewer on session-2 is accepted (no "does not match" rejection) and offered to.
+        context.Signaling.Messages.Clear();
+        await publisher.HandleAsync(new(SignalingMessageTypes.ViewerReady, "session-2", From: "viewer-2"));
+
+        var offer = Assert.Single(context.Signaling.Messages);
+        Assert.Equal(SignalingMessageTypes.WebRtcOffer, offer.Type);
+        Assert.Equal("session-2", offer.SessionId);
+        Assert.Equal("viewer-2", offer.To);
+    }
+
+    [Fact]
     public async Task InvalidInboundPayloadUpdatesLastError()
     {
         var context = CreateContext();

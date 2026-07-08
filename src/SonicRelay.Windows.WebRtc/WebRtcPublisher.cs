@@ -87,9 +87,16 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
     private async Task HandleSessionJoinedAsync(SignalingMessageEnvelope message, CancellationToken cancellationToken)
     {
         var sessionId = RequireSessionId(message);
-        // The publisher's own join (from == null) simply establishes the active session.
+        if (!IsViewerJoin(message))
+        {
+            // The publisher's own join (from == null) establishes — or supersedes — the
+            // active session. A new session id means the previous session ended without a
+            // clean `session.ended` (e.g. the viewer crashed and the server reaped the
+            // session); adopt the new one instead of rejecting all its traffic forever.
+            await AdoptSessionAsync(sessionId, cancellationToken);
+            return;
+        }
         activeSessionId ??= sessionId;
-        if (!IsViewerJoin(message)) return;
         ValidateSession(message);
         await OfferToViewerAsync(sessionId, message.From!, cancellationToken);
     }
@@ -149,6 +156,20 @@ public sealed class WebRtcPublisher : IWebRtcPublisher
                 viewerId,
                 JsonSerializer.SerializeToElement(candidate, JsonOptions)),
             cancellationToken);
+    }
+
+    // Switches to a superseding session: tears down peers left over from the previous
+    // session and clears the stale error so the publisher can serve the new session.
+    private async Task AdoptSessionAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        if (string.Equals(activeSessionId, sessionId, StringComparison.Ordinal)) return;
+        if (activeSessionId is not null)
+        {
+            await peers.RemoveAllAsync(cancellationToken);
+            lastError = null;
+            PublishDiagnostics();
+        }
+        activeSessionId = sessionId;
     }
 
     private void ValidateSession(SignalingMessageEnvelope message)

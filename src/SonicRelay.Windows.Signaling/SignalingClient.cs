@@ -277,16 +277,29 @@ public sealed class SignalingClient : ISignalingClient
             }
             catch (Exception exception) when (IsTransient(exception))
             {
-                if (!await TryReconnectAsync(cancellationToken))
+                switch (await TryReconnectAsync(cancellationToken))
                 {
-                    SetState(SignalingConnectionState.Faulted);
-                    return;
+                    case ReconnectOutcome.Reconnected:
+                        break;
+                    case ReconnectOutcome.SessionGone:
+                        await HandleSessionGoneAsync();
+                        return;
+                    default:
+                        SetState(SignalingConnectionState.Faulted);
+                        return;
                 }
             }
         }
     }
 
-    private async Task<bool> TryReconnectAsync(CancellationToken cancellationToken)
+    private enum ReconnectOutcome
+    {
+        Reconnected,
+        Exhausted,
+        SessionGone,
+    }
+
+    private async Task<ReconnectOutcome> TryReconnectAsync(CancellationToken cancellationToken)
     {
         SetState(SignalingConnectionState.Reconnecting);
         for (var attempt = 0; reconnectPolicy.MaxAttempts is null || attempt < reconnectPolicy.MaxAttempts; attempt++)
@@ -295,17 +308,32 @@ public sealed class SignalingClient : ISignalingClient
             {
                 await reconnectDelay.DelayAsync(ReconnectDelayFor(attempt), cancellationToken);
                 await OpenConnectionAsync(cancellationToken);
-                return true;
+                return ReconnectOutcome.Reconnected;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return false;
+                return ReconnectOutcome.Exhausted;
+            }
+            catch (SignalingSessionGoneException)
+            {
+                // The session is gone (410/404). Stop retrying immediately — looping on a
+                // dead session wedges the client and blocks starting a new one.
+                return ReconnectOutcome.SessionGone;
             }
             catch (Exception exception) when (IsTransient(exception))
             {
             }
         }
-        return false;
+        return ReconnectOutcome.Exhausted;
+    }
+
+    // Terminally releases a session the server has discarded: tears down the socket
+    // and clears the identity so the UI can start a fresh session immediately.
+    private async Task HandleSessionGoneAsync()
+    {
+        await DisposeConnectionAsync();
+        ClearActiveIdentity();
+        SetState(SignalingConnectionState.Closed);
     }
 
     private TimeSpan ReconnectDelayFor(int attempt)
