@@ -126,6 +126,26 @@ Values that are not yet measured (jitter, packet loss, bitrate) are shown safely
 `—`; plumbing them from WebRTC `getStats` is a deliberate follow-up. Design-time
 mock data (`DashboardViewModel.DesignTime`) lets the page preview without a session.
 
+## ICE servers and force relay
+
+`PublisherRuntime.Create` wires a `BackendIceServersProvider`
+(`SonicRelay.Windows.ApiClient`) that fetches STUN/TURN servers — including
+short-lived TURN credentials — from the authenticated backend endpoint
+`GET /api/webrtc/ice-servers`, which serves the SonicRelay coturn deployment.
+Results are cached until shortly before the TURN credentials expire. The
+public Google STUN server (`stun:stun1.google.com:19302`) is used only as a
+last-resort fallback in **debug builds** when that request fails and there is
+no cache yet; release builds instead get an empty ICE server list rather than
+silently depending on it.
+
+`RelayPreferenceStore` (`SonicRelay.Windows.Core.Configuration`) persists a
+"force relay" (TURN-only) preference; when set, `SipSorceryPeerConnectionFactory`
+builds the peer connection with `iceTransportPolicy = relay` instead of the
+default `all`, restricting ICE to relayed candidates. This is useful for
+debugging NAT traversal against the coturn relay end-to-end, at the cost of
+extra latency and relay bandwidth — leave it off unless diagnosing a
+connectivity issue.
+
 ## Audio source selection
 
 By default the publisher captures the current Windows **default** render endpoint.

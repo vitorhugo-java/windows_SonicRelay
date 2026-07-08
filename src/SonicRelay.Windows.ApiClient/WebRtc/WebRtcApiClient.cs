@@ -7,7 +7,10 @@ public interface IWebRtcApiClient
     Task<IceServersResponse> GetIceServersAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed record IceServersResponse(IReadOnlyList<IceServerResponse> IceServers, int TtlSeconds);
+public sealed record IceServersResponse(
+    IReadOnlyList<IceServerResponse> IceServers,
+    string IceTransportPolicy,
+    DateTimeOffset ExpiresAt);
 
 public sealed record IceServerResponse(IReadOnlyList<string> Urls, string? Username = null, string? Credential = null);
 

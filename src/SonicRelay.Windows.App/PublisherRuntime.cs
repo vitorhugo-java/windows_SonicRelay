@@ -15,6 +15,15 @@ namespace SonicRelay.Windows.App;
 
 public sealed class PublisherRuntime : IAsyncDisposable
 {
+    // Google's public STUN server is a development-only fallback for when the
+    // backend ICE endpoint is unreachable; it must never be relied on in a
+    // release build.
+#if DEBUG
+    private const bool AllowGoogleStunDevFallback = true;
+#else
+    private const bool AllowGoogleStunDevFallback = false;
+#endif
+
     private readonly HttpClient httpClient;
     private readonly IPeerConnectionManager peers;
     private readonly IWebRtcPublisher webRtcPublisher;
@@ -83,7 +92,14 @@ public sealed class PublisherRuntime : IAsyncDisposable
         // a composite handler after both exist.
         var signalingHandlers = new CompositeSignalingMessageHandler();
         var signaling = new SignalingClient(configuration, tokenStore, [signalingHandlers]);
-        var iceServersProvider = new BackendIceServersProvider(new WebRtcApiClient(http, tokenStore));
+        // ICE servers (including short-lived TURN credentials) come from the
+        // backend, which serves the SonicRelay coturn deployment. The public
+        // Google STUN fallback is a debug-build-only convenience for when the
+        // backend request fails; release builds get an empty ICE server list
+        // instead of silently depending on Google's STUN server.
+        var iceServersProvider = new BackendIceServersProvider(
+            new WebRtcApiClient(http, tokenStore),
+            allowGoogleStunDevFallback: AllowGoogleStunDevFallback);
         var relayPreference = new RelayPreferenceStore();
         var audioQuality = new AudioQualityStore();
         var peers = new PeerConnectionManager(
@@ -91,7 +107,7 @@ public sealed class PublisherRuntime : IAsyncDisposable
                 iceServersProvider,
                 () => relayPreference.ForceRelay,
                 () => audioQuality.CurrentProfile),
-            new WebRtcPublisherOptions([new WebRtcIceServer(["stun:stun.l.google.com:19302"])]));
+            new WebRtcPublisherOptions());
         var webRtcPublisher = new WebRtcPublisher(signaling, peers);
         signalingHandlers.Register(webRtcPublisher);
 

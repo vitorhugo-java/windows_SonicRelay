@@ -7,13 +7,22 @@ namespace SonicRelay.Windows.ApiClient.WebRtc;
 /// Supplies ICE servers to the WebRTC layer from the backend
 /// <c>/api/webrtc/ice-servers</c> endpoint, caching them until shortly before
 /// the returned TURN credentials expire. Never throws: on failure it returns
-/// the last good result, or a public-STUN fallback, so peer creation always
-/// proceeds.
+/// the last good result. With no cache to fall back to, it returns the
+/// public-STUN <see cref="StunFallback"/> only when
+/// <paramref name="allowGoogleStunDevFallback"/> is true (development
+/// builds); otherwise it returns an empty list rather than silently
+/// depending on Google's public STUN server in production. An empty (but
+/// successful) backend response is returned as-is — it is not replaced with
+/// the dev fallback, since that is a valid, authoritative answer (e.g. TURN
+/// not configured and the server-side Google STUN fallback disabled).
 /// </summary>
-public sealed class BackendIceServersProvider(IWebRtcApiClient apiClient, TimeProvider? timeProvider = null) : IIceServersProvider
+public sealed class BackendIceServersProvider(
+    IWebRtcApiClient apiClient,
+    TimeProvider? timeProvider = null,
+    bool allowGoogleStunDevFallback = false) : IIceServersProvider
 {
     private static readonly IReadOnlyList<WebRtcIceServer> StunFallback =
-        [new WebRtcIceServer(["stun:stun.l.google.com:19302"])];
+        [new WebRtcIceServer(["stun:stun1.google.com:19302"])];
 
     private readonly IWebRtcApiClient apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
     private readonly TimeProvider timeProvider = timeProvider ?? TimeProvider.System;
@@ -39,13 +48,13 @@ public sealed class BackendIceServersProvider(IWebRtcApiClient apiClient, TimePr
                 .ToArray();
             // Refresh a minute before the credentials lapse so a renegotiation
             // never starts with a stale TURN username.
-            var ttl = Math.Max(response.TtlSeconds - 60, 30);
+            var ttl = Math.Max((response.ExpiresAt - now).TotalSeconds - 60, 30);
             cacheExpiresAt = now.AddSeconds(ttl);
-            return cached.Count > 0 ? cached : StunFallback;
+            return cached;
         }
         catch (Exception exception) when (exception is not OperationCanceledException and (ApiClientException or HttpRequestException))
         {
-            return cached ?? StunFallback;
+            return cached ?? (allowGoogleStunDevFallback ? StunFallback : []);
         }
         finally
         {
