@@ -9,10 +9,15 @@ namespace SonicRelay.Windows.WebRtc;
 /// credentials. Falls back to the statically configured options if the
 /// provider yields nothing.
 /// </summary>
-public sealed class SipSorceryPeerConnectionFactory(IIceServersProvider iceServersProvider) : IWebRtcPeerConnectionFactory
+public sealed class SipSorceryPeerConnectionFactory(
+    IIceServersProvider iceServersProvider,
+    Func<bool>? forceRelay = null) : IWebRtcPeerConnectionFactory
 {
     private readonly IIceServersProvider iceServersProvider =
         iceServersProvider ?? throw new ArgumentNullException(nameof(iceServersProvider));
+
+    // Read at creation time so a settings toggle applies to the next viewer.
+    private readonly Func<bool> forceRelay = forceRelay ?? (() => false);
 
     public async Task<IWebRtcPeerConnection> CreateAsync(
         string viewerId,
@@ -23,9 +28,21 @@ public sealed class SipSorceryPeerConnectionFactory(IIceServersProvider iceServe
         ArgumentNullException.ThrowIfNull(options);
 
         var servers = await ResolveIceServersAsync(options, cancellationToken).ConfigureAwait(false);
-        var configuration = new RTCConfiguration { iceServers = MapIceServers(servers) };
+        var configuration = BuildConfiguration(servers, forceRelay());
         return new SipSorceryPeerConnection(viewerId, new RTCPeerConnection(configuration));
     }
+
+    /// <summary>
+    /// Builds the peer configuration. When <paramref name="forceRelay"/> is true the
+    /// transport policy is <c>relay</c> (TURN only); otherwise <c>all</c> permits
+    /// direct host/srflx candidates. Exposed for testing the policy mapping.
+    /// </summary>
+    public static RTCConfiguration BuildConfiguration(IReadOnlyList<WebRtcIceServer> servers, bool forceRelay) =>
+        new()
+        {
+            iceServers = MapIceServers(servers),
+            iceTransportPolicy = forceRelay ? RTCIceTransportPolicy.relay : RTCIceTransportPolicy.all,
+        };
 
     private async Task<IReadOnlyList<WebRtcIceServer>> ResolveIceServersAsync(
         WebRtcPublisherOptions options,
