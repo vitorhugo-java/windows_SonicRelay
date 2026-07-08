@@ -96,6 +96,36 @@ apply a different profile. The page shows the effective codec settings (codec,
 bitrate, channels, frame duration, sample rate) and an approximate traffic
 estimate (kbps, MB/min, MB/hour) derived from the Opus bitrate.
 
+## Publisher dashboard
+
+The **Dashboard** page (`PublisherDashboardPage`) is a dark, card-based monitor
+aligned with the Flutter Audio Monitor style, driven entirely by existing publisher,
+signaling, WebRTC, and audio-metering state. Its colours come from a single locked
+palette (`Styles/SonicPalette.xaml`) exposed as named `Sonic.*` brushes; no other
+colours are introduced for the dashboard.
+
+A pure, unit-tested `DashboardViewModel` (in `SonicRelay.Windows.Presentation`)
+projects the state into always-non-null display values, so the XAML holds no
+business logic. The page rebuilds the ViewModel from `Workflow.StateChanged` and
+`IWebRtcPublisher.DiagnosticsChanged` and pushes it to lightweight controls
+(`StatusBadgeControl`, `MetricCardControl`, `AudioVisualizerControl`,
+`ConnectionStatusCard`, `QualityMetricsCard`).
+
+It shows:
+
+- **Session** status (Idle / Waiting / Streaming / Error), **Signaling** status
+  (Connected / Connecting / Reconnecting / Disconnected / Failed), and aggregated
+  **WebRTC/ICE** status, each as a colour-coded badge.
+- **Connection mode** (Direct / Relay / Unknown), the session **code**, and the
+  live **viewer** count.
+- An **audio visualizer** — a row of teal/blue gradient bars eased from the capture
+  level meter, animating while capturing and resting on a flat line when idle.
+- **Latency / RTT** from the real WebRTC estimated round-trip time.
+
+Values that are not yet measured (jitter, packet loss, bitrate) are shown safely as
+`—`; plumbing them from WebRTC `getStats` is a deliberate follow-up. Design-time
+mock data (`DashboardViewModel.DesignTime`) lets the page preview without a session.
+
 ## Audio source selection
 
 By default the publisher captures the current Windows **default** render endpoint.

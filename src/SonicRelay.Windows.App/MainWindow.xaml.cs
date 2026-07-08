@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Changed += OnAppWindowChanged;
 
         ShellNavigation.SelectedItem = ShellNavigation.MenuItems[0];
-        ContentFrame.Navigate(typeof(DashboardPage));
+        ContentFrame.Navigate(typeof(PublisherDashboardPage));
         App.CurrentApp.RuntimeChanged += OnRuntimeChanged;
         Closed += OnClosed;
         OnRuntimeChanged(App.CurrentApp.Runtime);
@@ -218,7 +218,7 @@ public sealed partial class MainWindow : Window
         if (args.SelectedItemContainer?.Tag is not string tag) return;
         Type? page = tag switch
         {
-            "Dashboard" => typeof(DashboardPage), "Connection" => typeof(ConnectionPage),
+            "Dashboard" => typeof(PublisherDashboardPage), "Connection" => typeof(ConnectionPage),
             "Session" => typeof(SessionPage), "Audio" => typeof(AudioPage),
             "Diagnostics" => typeof(DiagnosticsPage), "Settings" => typeof(SettingsPage), _ => null
         };
