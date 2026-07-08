@@ -98,6 +98,22 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
+    private async void Logout_Click(object sender, RoutedEventArgs e)
+    {
+        ErrorBar.IsOpen = false;
+        var current = App.CurrentApp.Runtime?.Workflow;
+        if (current is null) return;
+        try
+        {
+            await current.LogoutAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorBar.Message = exception.Message;
+            ErrorBar.IsOpen = true;
+        }
+    }
+
     private bool TryGetBackend(out Uri backend)
     {
         if (Uri.TryCreate(BackendUrlBox.Text?.Trim(), UriKind.Absolute, out backend!)
@@ -114,11 +130,14 @@ public sealed partial class ConnectionPage : Page
 
     private void Render(PublisherSnapshot? state)
     {
-        AuthStatusText.Text = state?.IsAuthenticated == true ? state.UserDisplayName ?? "Signed in" : "Not signed in";
-        DeviceStatusText.Text = state?.DeviceName ?? "Not registered";
+        var authenticated = state?.IsAuthenticated == true;
+        SignInPanel.Visibility = authenticated ? Visibility.Collapsed : Visibility.Visible;
+        AccountPanel.Visibility = authenticated ? Visibility.Visible : Visibility.Collapsed;
+        AccountEmailText.Text = state?.UserEmail ?? state?.UserDisplayName ?? "Signed in";
         BusyRing.IsActive = state?.IsBusy == true;
         LoginButton.IsEnabled = state?.IsBusy != true;
         CreateAccountButton.IsEnabled = state?.IsBusy != true;
+        LogoutButton.IsEnabled = state?.IsBusy != true;
         ErrorBar.Message = state?.ErrorMessage ?? string.Empty;
         ErrorBar.IsOpen = !string.IsNullOrWhiteSpace(state?.ErrorMessage);
     }

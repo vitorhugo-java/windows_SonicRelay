@@ -89,13 +89,20 @@ public sealed class PublisherWorkflow : IAsyncDisposable
         await auth.LoginAsync(new LoginRequest(email, password), cancellationToken);
         var user = await auth.GetCurrentUserAsync(cancellationToken);
         var available = await devices.GetDevicesAsync(cancellationToken);
+        // Match the publisher device for *this* machine by its hostname. The same account
+        // can be signed in on several machines, so reusing any windows_publisher device
+        // would surface another machine's name; register a device for this machine instead.
         var device = available.FirstOrDefault(item =>
-            item.Type == "windows_publisher" && item.Platform == "windows" && !item.Revoked)
+            item.Type == "windows_publisher"
+            && item.Platform == "windows"
+            && !item.Revoked
+            && string.Equals(item.Name, deviceName, StringComparison.Ordinal))
             ?? await devices.RegisterWindowsPublisherAsync(new RegisterDeviceRequest(deviceName, null), cancellationToken);
         SetState(State with
         {
             IsAuthenticated = true,
             UserDisplayName = user.DisplayName ?? user.Email,
+            UserEmail = user.Email,
             DeviceId = device.Id,
             DeviceName = device.Name
         }, "Signed in and publisher device is ready.");
@@ -149,6 +156,21 @@ public sealed class PublisherWorkflow : IAsyncDisposable
             SetState(State with { SessionId = null, SessionCode = null, ViewerCount = 0 }, "Session ended.");
         }, cancellationToken);
     }
+
+    public Task LogoutAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(async token =>
+        {
+            // Tear down any live session locally before dropping credentials, then reset
+            // to a fresh unauthenticated snapshot so the UI returns to the sign-in state.
+            if (State.SessionId is { } sessionId)
+            {
+                if (audio.State is not AudioCaptureState.Stopped) await audio.StopAsync(token);
+                await signaling.CloseAsync(token);
+                try { await sessions.EndSessionAsync(sessionId, token); } catch { }
+            }
+            await auth.LogoutAsync(token);
+            SetState(new PublisherSnapshot { AudioDiagnostics = audio.Diagnostics }, "Signed out.");
+        }, cancellationToken);
 
     private async Task RefreshViewerCountCoreAsync(CancellationToken cancellationToken)
     {

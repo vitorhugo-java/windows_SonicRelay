@@ -36,4 +36,8 @@ public sealed class AuthApiClient(HttpClient httpClient, ITokenStore tokenStore)
 
     public Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default) =>
         _api.SendAsync<CurrentUserResponse>(HttpMethod.Get, "/auth/me", null, true, cancellationToken);
+
+    public Task LogoutAsync(CancellationToken cancellationToken = default) =>
+        // Identity issues stateless bearer tokens, so signing out is a local token wipe.
+        _api.ClearTokensAsync(cancellationToken);
 }

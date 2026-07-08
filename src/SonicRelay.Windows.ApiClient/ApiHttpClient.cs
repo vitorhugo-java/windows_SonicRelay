@@ -78,6 +78,15 @@ internal sealed class ApiHttpClient(HttpClient httpClient, ITokenStore tokenStor
     public Task SaveTokensAsync(TokenSet tokens, CancellationToken cancellationToken) =>
         SaveTokensCoreAsync(tokens, cancellationToken);
 
+    public async Task ClearTokensAsync(CancellationToken cancellationToken)
+    {
+        var result = await tokenStore.DeleteAsync(cancellationToken);
+        if (!result.Succeeded)
+        {
+            throw new ApiClientException(ApiErrorKind.Unknown, result.Message ?? "Authentication tokens could not be cleared.");
+        }
+    }
+
     private async Task<HttpResponseMessage> SendOnceAsync(
         HttpMethod method,
         string path,

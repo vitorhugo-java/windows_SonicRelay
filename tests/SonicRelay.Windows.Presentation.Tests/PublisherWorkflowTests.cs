@@ -84,10 +84,11 @@ public sealed class PublisherWorkflowTests
     }
 
     [Fact]
-    public async Task LoginReusesActiveWindowsPublisherDevice()
+    public async Task LoginReusesThisMachinesPublisherDevice()
     {
         await using var fixture = new Fixture();
-        var device = Device("publisher", revoked: false);
+        // A device already registered for this machine (same hostname as the fixture).
+        var device = Device("Test PC", revoked: false);
         fixture.Devices.Items.Add(device);
 
         await fixture.Workflow.LoginAsync("user@example.com", "password");
@@ -95,6 +96,40 @@ public sealed class PublisherWorkflowTests
         Assert.True(fixture.Workflow.State.IsAuthenticated);
         Assert.Equal(device.Id, fixture.Workflow.State.DeviceId);
         Assert.False(fixture.Devices.RegisterCalled);
+    }
+
+    [Fact]
+    public async Task LoginRegistersASeparateDeviceWhenOnlyAnotherMachinesExists()
+    {
+        await using var fixture = new Fixture();
+        // The account is already used on a different machine; that device must not be
+        // adopted here — this machine registers its own so the name is correct.
+        fixture.Devices.Items.Add(Device("Other PC", revoked: false));
+
+        await fixture.Workflow.LoginAsync("user@example.com", "password");
+
+        Assert.True(fixture.Devices.RegisterCalled);
+        Assert.Equal("Test PC", fixture.Workflow.State.DeviceName);
+        Assert.Equal(fixture.Devices.LastRegisteredId, fixture.Workflow.State.DeviceId);
+    }
+
+    [Fact]
+    public async Task LogoutTearsDownSessionClearsAuthAndResetsState()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Workflow.LoginAsync("user@example.com", "password");
+        await fixture.Workflow.CreateSessionAsync();
+        await fixture.Workflow.StartAudioAsync();
+
+        await fixture.Workflow.LogoutAsync();
+
+        Assert.True(fixture.Auth.LogoutCalled);
+        Assert.True(fixture.Audio.StopCalled);
+        Assert.True(fixture.Signaling.CloseCalled);
+        Assert.Equal(fixture.Sessions.Created.Id, fixture.Sessions.EndedId);
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.Null(fixture.Workflow.State.SessionId);
+        Assert.Null(fixture.Workflow.State.DeviceId);
     }
 
     [Fact]
@@ -193,6 +228,12 @@ public sealed class PublisherWorkflowTests
         public Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new CurrentUserResponse(Guid.NewGuid(), "user@example.com", "User", true, DateTimeOffset.UtcNow, null));
+        public bool LogoutCalled => Calls.Contains("logout");
+        public Task LogoutAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("logout");
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeDevices : IDeviceApiClient

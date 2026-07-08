@@ -1,21 +1,27 @@
 <Page x:Class="SonicRelay.Windows.App.Pages.ConnectionPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <ScrollViewer><StackPanel Padding="24" Spacing="12" MaxWidth="640" HorizontalAlignment="Left">
     <TextBlock FontSize="{StaticResource TitleFontSize}" FontWeight="SemiBold" Text="Connection"/>
-    <TextBlock Text="Configure the backend and sign in to prepare this Windows publisher." TextWrapping="Wrap"/>
-    <TextBox x:Name="BackendUrlBox" Header="Backend URL" Text="https://localhost:5001/" PlaceholderText="https://relay.example.com/"/>
-    <TextBox x:Name="EmailBox" Header="Email" InputScope="EmailSmtpAddress"/>
-    <PasswordBox x:Name="PasswordBox" Header="Password"/>
-    <StackPanel Orientation="Horizontal" Spacing="12">
-      <Button x:Name="LoginButton" Content="Sign in and prepare device" Click="Login_Click" Style="{StaticResource AccentButtonStyle}"/>
-      <Button x:Name="CreateAccountButton" Content="Create account" Click="CreateAccount_Click"/>
+
+    <!-- Sign-in form: shown only while signed out. -->
+    <StackPanel x:Name="SignInPanel" Spacing="12">
+      <TextBlock Text="Configure the backend and sign in to prepare this Windows publisher." TextWrapping="Wrap"/>
+      <TextBox x:Name="BackendUrlBox" Header="Backend URL" Text="https://sonicrelay-api.hugodotnet.dev" PlaceholderText="https://relay.example.com/"/>
+      <TextBox x:Name="EmailBox" Header="Email" InputScope="EmailSmtpAddress"/>
+      <PasswordBox x:Name="PasswordBox" Header="Password"/>
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button x:Name="LoginButton" Content="Sign in and prepare device" Click="Login_Click" Style="{StaticResource AccentButtonStyle}"/>
+        <Button x:Name="CreateAccountButton" Content="Create account" Click="CreateAccount_Click"/>
+      </StackPanel>
     </StackPanel>
+
+    <!-- Account summary: shown only while signed in. Just the email and a log-out action. -->
+    <StackPanel x:Name="AccountPanel" Spacing="12" Visibility="Collapsed">
+      <TextBlock Text="Signed in as" Opacity="0.7"/>
+      <TextBlock x:Name="AccountEmailText" FontSize="{StaticResource TitleFontSize}" FontWeight="SemiBold"/>
+      <Button x:Name="LogoutButton" Content="Log out" Click="Logout_Click"/>
+    </StackPanel>
+
     <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" HorizontalAlignment="Left"/>
     <InfoBar x:Name="ErrorBar" Severity="Error" IsOpen="False" IsClosable="False"/>
-    <Grid ColumnSpacing="12" RowSpacing="8">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-      <TextBlock Text="Authentication"/><TextBlock x:Name="AuthStatusText" Grid.Column="1" Text="Not signed in"/>
-      <TextBlock Grid.Row="1" Text="Publisher device"/><TextBlock x:Name="DeviceStatusText" Grid.Row="1" Grid.Column="1" Text="Not registered"/>
-    </Grid>
   </StackPanel></ScrollViewer>
 </Page>
