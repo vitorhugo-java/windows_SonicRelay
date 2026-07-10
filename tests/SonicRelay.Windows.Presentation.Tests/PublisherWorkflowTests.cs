@@ -133,6 +133,25 @@ public sealed class PublisherWorkflowTests
     }
 
     [Fact]
+    public async Task DeleteAccountTearsDownSessionCallsServerAndResetsState()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Workflow.LoginAsync("user@example.com", "password");
+        await fixture.Workflow.CreateSessionAsync();
+        await fixture.Workflow.StartAudioAsync();
+
+        await fixture.Workflow.DeleteAccountAsync();
+
+        Assert.True(fixture.Auth.DeleteAccountCalled);
+        Assert.True(fixture.Audio.StopCalled);
+        Assert.True(fixture.Signaling.CloseCalled);
+        Assert.Equal(fixture.Sessions.Created.Id, fixture.Sessions.EndedId);
+        Assert.False(fixture.Workflow.State.IsAuthenticated);
+        Assert.Null(fixture.Workflow.State.SessionId);
+        Assert.Null(fixture.Workflow.State.DeviceId);
+    }
+
+    [Fact]
     public async Task CreateSessionConnectsSignalingAndExposesCode()
     {
         await using var fixture = new Fixture();
@@ -338,6 +357,12 @@ public sealed class PublisherWorkflowTests
         public Task LogoutAsync(CancellationToken cancellationToken = default)
         {
             Calls.Add("logout");
+            return Task.CompletedTask;
+        }
+        public bool DeleteAccountCalled => Calls.Contains("delete-account");
+        public Task DeleteAccountAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("delete-account");
             return Task.CompletedTask;
         }
     }

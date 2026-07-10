@@ -2,10 +2,13 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using SonicRelay.Windows.App.Appearance;
 using SonicRelay.Windows.App.Pages;
 using SonicRelay.Windows.App.Tray;
+using SonicRelay.Windows.Core.Configuration;
 using SonicRelay.Windows.Presentation;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
 
 namespace SonicRelay.Windows.App;
 
@@ -28,7 +31,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         TrySetWindowIcon();
-        ConfigureBackdrop();
+        ConfigureWindowSize();
+        ApplyAppearance();
 
         tray = new TrayApplicationController(() => App.CurrentApp.TrayPreferences.KeepRunningInTray);
         trayIcon = new Win32TrayIconService(tray.TooltipFor(null));
@@ -200,15 +204,49 @@ public sealed partial class MainWindow : Window
     private static SolidColorBrush SolidFallbackBrush =>
         (SolidColorBrush)Application.Current.Resources["AppBackgroundBrush"];
 
-    private void ConfigureBackdrop()
+    // WinUI opens windows at a large default; start at a compact, sensible size and
+    // enforce a minimum so the compact NavigationView and cards stay usable (issue #30).
+    private void ConfigureWindowSize()
     {
+        AppWindow.Resize(new SizeInt32(1120, 760));
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = 880;
+            presenter.PreferredMinimumHeight = 620;
+        }
+    }
+
+    /// <summary>
+    /// Applies the persisted appearance preferences (theme, backdrop, opacity). Safe to
+    /// call again at runtime — the Settings page invokes it after a change.
+    /// </summary>
+    public void ApplyAppearance()
+    {
+        var appearance = App.CurrentApp.AppearancePreferences;
+
+        if (Content is FrameworkElement root)
+        {
+            root.RequestedTheme = appearance.Theme switch
+            {
+                AppTheme.Light => ElementTheme.Light,
+                AppTheme.Dark => ElementTheme.Dark,
+                _ => ElementTheme.Default
+            };
+        }
+
         RootGrid.Background = SolidFallbackBrush;
         try
         {
-            SystemBackdrop = new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base };
+            SystemBackdrop = appearance.Backdrop switch
+            {
+                AppBackdrop.Acrylic => new TintedAcrylicBackdrop(appearance.TintOpacity),
+                AppBackdrop.None => null,
+                _ => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base }
+            };
         }
         catch
         {
+            // Backdrop is best-effort; a solid RootGrid background is the fallback.
             SystemBackdrop = null;
         }
     }

@@ -123,6 +123,35 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
+    private async void DeleteAccount_Click(object sender, RoutedEventArgs e)
+    {
+        ErrorBar.IsOpen = false;
+        var current = App.CurrentApp.Runtime?.Workflow;
+        if (current is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete account?",
+            Content = "This permanently disables your SonicRelay account. Your devices and "
+                + "active sessions are revoked and you will be signed out. This cannot be undone.",
+            PrimaryButtonText = "Delete account",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        try
+        {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            await current.DeleteAccountAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorBar.Message = exception.Message;
+            ErrorBar.IsOpen = true;
+        }
+    }
+
     private bool TryGetBackend(out Uri backend)
     {
         if (Uri.TryCreate(BackendUrlBox.Text?.Trim(), UriKind.Absolute, out backend!)
@@ -147,6 +176,7 @@ public sealed partial class ConnectionPage : Page
         LoginButton.IsEnabled = state?.IsBusy != true;
         CreateAccountButton.IsEnabled = state?.IsBusy != true;
         LogoutButton.IsEnabled = state?.IsBusy != true;
+        DeleteAccountButton.IsEnabled = state?.IsBusy != true;
         ErrorBar.Message = state?.ErrorMessage ?? string.Empty;
         ErrorBar.IsOpen = !string.IsNullOrWhiteSpace(state?.ErrorMessage);
     }

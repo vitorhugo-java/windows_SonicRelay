@@ -9,6 +9,7 @@ public interface IAuthApiClient
     Task<TokenSet> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
     Task<CurrentUserResponse> GetCurrentUserAsync(CancellationToken cancellationToken = default);
     Task LogoutAsync(CancellationToken cancellationToken = default);
+    Task DeleteAccountAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record LoginRequest(string Email, string Password);

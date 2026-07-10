@@ -18,6 +18,13 @@ public partial class App : Application
     /// </summary>
     public TrayBackgroundPreferenceStore TrayPreferences { get; } = new();
 
+    /// <summary>
+    /// App-global appearance preferences (issue #30): theme, backdrop material and
+    /// acrylic opacity. Applied by <see cref="MainWindow"/> at startup and whenever
+    /// changed from the Settings page.
+    /// </summary>
+    public AppearancePreferenceStore AppearancePreferences { get; } = new();
+
     public App()
     {
         InitializeComponent();
@@ -36,6 +43,9 @@ public partial class App : Application
 
         _ = LoadConfiguredRuntimeAsync();
     }
+
+    /// <summary>Re-applies appearance preferences to the main window (called from Settings).</summary>
+    public void ApplyAppearance() => (_window as MainWindow)?.ApplyAppearance();
 
     /// <summary>
     /// Swaps the active runtime for one pointed at <paramref name="backendBaseUrl"/>

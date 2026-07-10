@@ -18,7 +18,12 @@
     <StackPanel x:Name="AccountPanel" Spacing="12" Visibility="Collapsed">
       <TextBlock Text="Signed in as" Opacity="0.7"/>
       <TextBlock x:Name="AccountEmailText" FontSize="{StaticResource TitleFontSize}" FontWeight="SemiBold"/>
-      <Button x:Name="LogoutButton" Content="Log out" Click="Logout_Click"/>
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button x:Name="LogoutButton" Content="Log out" Click="Logout_Click"/>
+        <Button x:Name="DeleteAccountButton" Content="Delete account" Click="DeleteAccount_Click"/>
+      </StackPanel>
+      <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                 Text="Deleting your account revokes your devices and sessions and cannot be undone."/>
     </StackPanel>
 
     <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" HorizontalAlignment="Left"/>

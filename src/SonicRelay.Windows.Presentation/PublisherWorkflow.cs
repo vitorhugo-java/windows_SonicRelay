@@ -234,6 +234,24 @@ public sealed class PublisherWorkflow : IAsyncDisposable
             SetState(_ => new PublisherSnapshot { AudioDiagnostics = audio.Diagnostics }, "Signed out.");
         }, cancellationToken);
 
+    /// <summary>
+    /// Permanently deletes the signed-in account. Tears down any live session, calls the
+    /// server's self-service deletion endpoint, then resets to a fresh unauthenticated
+    /// snapshot so the UI returns to the sign-in state.
+    /// </summary>
+    public Task DeleteAccountAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(async token =>
+        {
+            if (State.SessionId is { } sessionId)
+            {
+                if (audio.State is not AudioCaptureState.Stopped) await audio.StopAsync(token);
+                await signaling.CloseAsync(token);
+                try { await sessions.EndSessionAsync(sessionId, token); } catch { }
+            }
+            await auth.DeleteAccountAsync(token);
+            SetState(_ => new PublisherSnapshot { AudioDiagnostics = audio.Diagnostics }, "Account deleted.");
+        }, cancellationToken);
+
     private async Task RefreshViewerCountCoreAsync(CancellationToken cancellationToken)
     {
         if (State.SessionId is not { } id) return;

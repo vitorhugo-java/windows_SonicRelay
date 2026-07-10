@@ -40,4 +40,12 @@ public sealed class AuthApiClient(HttpClient httpClient, ITokenStore tokenStore)
     public Task LogoutAsync(CancellationToken cancellationToken = default) =>
         // Identity issues stateless bearer tokens, so signing out is a local token wipe.
         _api.ClearTokensAsync(cancellationToken);
+
+    public async Task DeleteAccountAsync(CancellationToken cancellationToken = default)
+    {
+        // Soft-deletes the account server-side (revokes devices/sessions, blocks login,
+        // emails an operator via n8n), then wipes local credentials.
+        await _api.SendAsync(HttpMethod.Delete, "/api/account", null, authenticated: true, cancellationToken);
+        await _api.ClearTokensAsync(cancellationToken);
+    }
 }
