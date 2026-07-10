@@ -143,6 +143,36 @@ public sealed class PublisherUiStateResolverTests
     }
 
     [Fact]
+    public void Failed_viewer_does_not_fault_while_another_viewer_is_still_negotiating()
+    {
+        var diagnostics = new WebRtcPublisherDiagnostics(2, [
+            Viewer(PeerConnectionState.Failed),
+            new PeerConnectionDiagnostics("viewer-2", PeerConnectionState.Connecting),
+        ]);
+        Assert.Equal(PublisherUiState.ConnectingWebRtc, PublisherUiStateResolver.Resolve(InSession, diagnostics));
+    }
+
+    [Fact]
+    public void Failed_viewer_with_another_viewer_recovering_is_reconnecting()
+    {
+        var diagnostics = new WebRtcPublisherDiagnostics(2, [
+            Viewer(PeerConnectionState.Failed),
+            new PeerConnectionDiagnostics("viewer-2", PeerConnectionState.Disconnected),
+        ]);
+        Assert.Equal(PublisherUiState.Reconnecting, PublisherUiStateResolver.Resolve(InSession, diagnostics));
+    }
+
+    [Fact]
+    public void Failed_viewer_faults_when_the_only_other_viewer_is_closed()
+    {
+        var diagnostics = new WebRtcPublisherDiagnostics(2, [
+            Viewer(PeerConnectionState.Failed),
+            new PeerConnectionDiagnostics("viewer-2", PeerConnectionState.Closed),
+        ]);
+        Assert.Equal(PublisherUiState.Faulted, PublisherUiStateResolver.Resolve(InSession, diagnostics));
+    }
+
+    [Fact]
     public void One_live_viewer_outweighs_another_failed_viewer()
     {
         var snapshot = InSession with { AudioState = AudioCaptureState.Capturing };

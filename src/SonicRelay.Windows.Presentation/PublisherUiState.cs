@@ -59,10 +59,18 @@ public static class PublisherUiStateResolver
 
         var viewers = webrtc?.Viewers ?? [];
         var anyViewerConnected = viewers.Any(viewer => viewer.State == PeerConnectionState.Connected);
+        // A failed peer only faults the viewer side once no other peer can still
+        // become (or come back to) a live connection — a viewer that failed ICE must
+        // not surface fault/retry affordances while another is still negotiating.
+        var anyViewerRecoverable = viewers.Any(viewer => viewer.State is
+            PeerConnectionState.Connected
+            or PeerConnectionState.New
+            or PeerConnectionState.Connecting
+            or PeerConnectionState.Disconnected);
 
         if (snapshot.SignalingState == SignalingConnectionState.Faulted
             || snapshot.AudioState == AudioCaptureState.Faulted
-            || (!anyViewerConnected && viewers.Any(viewer => viewer.State == PeerConnectionState.Failed)))
+            || (!anyViewerRecoverable && viewers.Any(viewer => viewer.State == PeerConnectionState.Failed)))
         {
             return PublisherUiState.Faulted;
         }
