@@ -88,4 +88,6 @@ The WebSocket carries signaling control messages only. It does not carry audio; 
 5. WebRTC/Opus publication with one peer connection per viewer.
 6. Reliability, diagnostics, packaging, and release automation.
 
+A shared cross-platform desktop shell (Windows and, later, Linux) is being built in Avalonia UI behind the current WinUI app — see [the Avalonia desktop shell notes](docs/avalonia-desktop-shell.md) (issue #32, phase 2).
+
 See [the publisher specification](docs/windows-publisher.md), [architecture notes](docs/architecture.md), [non-admin checklist](docs/non-admin-checklist.md), and [release smoke test](docs/release-smoke-test.md) for the planned system boundaries and release gates.
