@@ -19,9 +19,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     private PublisherWorkflow? workflow;
     private IWebRtcPublisher? webRtc;
     private PublisherSnapshot? snapshot;
+    private bool showLogin = true;
 
     public MainWindowViewModel()
     {
+        Auth = new AuthViewModel(
+            (email, password) => Run(w => w.LoginAsync(email, password)),
+            (email, password, confirm) => Run(w => w.RegisterAsync(email, password, confirm)));
+
         Navigation =
         [
             new NavigationItem("◧", "Dashboard") { IsSelected = true },
@@ -41,6 +46,21 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public IReadOnlyList<NavigationItem> Navigation { get; }
     public DashboardShellViewModel Shell { get; } = new();
+    public AuthViewModel Auth { get; }
+
+    /// <summary>
+    /// Whether the sign-in surface (rather than the dashboard) should be shown. Derived from the
+    /// snapshot so a successful sign-in flips the shell to the dashboard automatically.
+    /// </summary>
+    public bool ShowLogin
+    {
+        get => showLogin;
+        private set => SetProperty(ref showLogin, value);
+    }
+
+    /// <summary>Pure rule: show login whenever there is no authenticated snapshot.</summary>
+    public static bool ShouldShowLogin(PublisherSnapshot? snapshot) =>
+        snapshot is null || !snapshot.IsAuthenticated;
 
     public RelayCommand CreateSessionCommand { get; }
     public RelayCommand StartAudioCommand { get; }
@@ -75,9 +95,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void OnStateChanged(PublisherSnapshot state) => Dispatch(() => { snapshot = state; Rebuild(); });
     private void OnDiagnosticsChanged(WebRtcPublisherDiagnostics _) => Dispatch(Rebuild);
 
-    private void Rebuild()
+    private void Rebuild() =>
+        Apply(snapshot, webRtc?.Diagnostics, runtime?.RelayPreference.ForceRelay ?? false);
+
+    private void Apply(PublisherSnapshot? state, WebRtcPublisherDiagnostics? diagnostics, bool forceRelay)
     {
-        Shell.Update(snapshot, webRtc?.Diagnostics, runtime?.RelayPreference.ForceRelay ?? false);
+        Shell.Update(state, diagnostics, forceRelay);
+        ShowLogin = ShouldShowLogin(state);
+        // The sign-in surface reads its busy/error state from the workflow snapshot; the
+        // workflow owns credential validation and the friendly error messages.
+        Auth.IsBusy = state?.IsBusy ?? false;
+        Auth.ErrorMessage = ShowLogin ? state?.ErrorMessage : null;
         RaiseCommandStates();
     }
 
@@ -106,7 +134,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public static MainWindowViewModel CreatePreview()
     {
         var vm = new MainWindowViewModel();
-        vm.Shell.Update(PreviewSnapshot(), PreviewDiagnostics(), forceRelay: false);
+        vm.Apply(PreviewSnapshot(), PreviewDiagnostics(), forceRelay: false);
         return vm;
     }
 

@@ -44,21 +44,37 @@ same shared projection (see [`windows-publisher.md`](windows-publisher.md)). Rea
 value yet still render as `—`, never fabricated: jitter/loss until the first RTCP report
 arrives, and RTT until it is plumbed (the remaining metric follow-up).
 
-`MainWindowViewModel.Attach(PublisherRuntime)` is the seam that binds a live runtime:
-it subscribes to `Workflow.StateChanged` and `IWebRtcPublisher.DiagnosticsChanged` and rebuilds
-the shell on the UI thread, and its contextual commands (create/start/stop/end/retry) map to
-`PublisherWorkflow`, gated by `PublisherUiCapabilities` for the current state. With no runtime
-attached the app launches in a **preview** state (a representative snapshot) so the layout and
-design system can be validated without a backend — this is a bootstrap placeholder, overwritten
-by `Update` the moment a runtime is attached.
+Command availability comes from the snapshot's own action guards
+(`PublisherSnapshot.CanStartAudio`/`CanStopAudio`/`CanCreateSession`/`CanEndSession`, via the
+pure `ShellCommandAvailability` helper) rather than the coarser, state-derived
+`PublisherUiCapabilities` — so, for example, capture can be stopped while the session is still
+`WaitingViewer`. Retry/logout stay capability-based (no snapshot equivalent).
+
+## Sign-in and live runtime
+
+`MainWindowViewModel.Attach(PublisherRuntime)` binds a live runtime: it subscribes to
+`Workflow.StateChanged` and `IWebRtcPublisher.DiagnosticsChanged` and rebuilds the shell on the
+UI thread. The window opens on the **sign-in surface** (`LoginView` + `AuthViewModel`) whenever
+the snapshot is unauthenticated and switches to the dashboard once a session exists — the rule
+is the pure `MainWindowViewModel.ShouldShowLogin`. `AuthViewModel` is a thin forwarder: it
+collects credentials and dispatches to `PublisherWorkflow.LoginAsync`/`RegisterAsync`, while
+validation and the friendly error messages stay with the workflow (surfaced back through the
+snapshot).
+
+On **Windows**, `App` composes a real runtime at startup (`PublisherRuntime.Create` with the
+WASAPI `AudioCaptureService` and the configured backend) and restores any persisted session, so
+a returning user lands on the dashboard. On **other platforms** (Linux today, and the headless
+render tests) the WASAPI adapter cannot run, so the app opens on the representative **preview**
+snapshot instead — a bootstrap placeholder, overwritten by real data the moment a runtime
+attaches. The Linux capture adapter (PipeWire) is a later phase.
 
 ## Scope boundaries
 
 - WinUI stays the shipped UI until the Avalonia shell reaches minimum functional parity; this
-  slice runs **side by side** and does not replace it.
-- The sign-in flow, tray/minimize-to-tray, reconnection UX, the non-dashboard pages, and the
-  live-runtime startup wiring are later phase-2 slices; the disabled sidebar entries are their
-  placeholders.
+  work runs **side by side** and does not replace it.
+- Tray/minimize-to-tray, reconnection UX, and the non-dashboard pages (the disabled sidebar
+  entries are their placeholders) are later phase-2 slices, along with RTT plumbing and flipping
+  the default from WinUI to Avalonia once parity is validated.
 - Linux/PipeWire capture and packaging are phases 3–5.
 
 ## Running and testing

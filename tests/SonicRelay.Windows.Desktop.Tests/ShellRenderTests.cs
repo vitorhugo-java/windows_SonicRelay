@@ -42,6 +42,28 @@ public sealed class ShellRenderTests
     }
 
     [AvaloniaFact]
+    public void Login_surface_renders_for_an_unauthenticated_shell()
+    {
+        var window = new MainWindow
+        {
+            // Fresh view model with no runtime: ShowLogin is true, so the sign-in surface shows.
+            DataContext = new MainWindowViewModel(),
+        };
+
+        window.Show();
+
+        var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+
+        var dir = Environment.GetEnvironmentVariable("SHELL_SHOT_DIR");
+        if (!string.IsNullOrWhiteSpace(dir))
+        {
+            Directory.CreateDirectory(dir);
+            frame!.Save(Path.Combine(dir, "login-preview.png"));
+        }
+    }
+
+    [AvaloniaFact]
     public void Badge_converter_resolves_semantic_token_brushes()
     {
         var brush = DashboardBadgeToBrushConverter.Instance.Convert(

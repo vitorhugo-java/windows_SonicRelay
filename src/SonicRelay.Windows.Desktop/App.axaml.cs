@@ -1,6 +1,10 @@
+using System.Runtime.Versioning;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using SonicRelay.Windows.Audio;
+using SonicRelay.Windows.Core.Configuration;
+using SonicRelay.Windows.Presentation;
 using SonicRelay.Windows.Desktop.ViewModels;
 using SonicRelay.Windows.Desktop.Views;
 
@@ -14,17 +18,41 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // The shell renders from the shared presentation projection
-            // (DashboardViewModel + PublisherUiState). A live PublisherRuntime is
-            // attached in a later slice (tray, auth, reconnect — phase 2 PR 3); until
-            // then the window opens on the representative snapshot so the layout and
-            // design system can be validated against the Lovable prototype.
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = MainWindowViewModel.CreatePreview(),
-            };
+            // On Windows the shell attaches a live publisher runtime (WASAPI capture + the
+            // configured backend) and opens on the sign-in surface until a session is restored
+            // or the user signs in. Elsewhere — Linux today, and the headless render tests — the
+            // WASAPI adapter cannot run, so the shell opens on a representative preview so the
+            // layout and design system stay verifiable. The Linux capture adapter (PipeWire) is
+            // a later phase (issue #32).
+            var viewModel = OperatingSystem.IsWindows()
+                ? new MainWindowViewModel()
+                : MainWindowViewModel.CreatePreview();
+
+            desktop.MainWindow = new MainWindow { DataContext = viewModel };
+
+            if (OperatingSystem.IsWindows())
+                _ = AttachConfiguredRuntimeAsync(viewModel);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task AttachConfiguredRuntimeAsync(MainWindowViewModel viewModel)
+    {
+        try
+        {
+            var configuration = await new UserConfigurationLoader().LoadAsync();
+            var runtime = PublisherRuntime.Create(configuration.BackendBaseUrl, new AudioCaptureService());
+            viewModel.Attach(runtime);
+            // Restore a persisted session (refresh + /auth/me) so a returning user lands on the
+            // dashboard; a missing/expired session simply leaves the sign-in surface showing.
+            await runtime.Workflow.RestoreSessionAsync();
+        }
+        catch
+        {
+            // Backend unreachable or no stored session at startup: stay on the sign-in surface
+            // so the user can retry once connectivity returns.
+        }
     }
 }

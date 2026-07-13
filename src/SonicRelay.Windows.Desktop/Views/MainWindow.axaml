@@ -10,7 +10,13 @@
         MinWidth="880" MinHeight="620"
         Background="{DynamicResource Sonic.AppBackgroundBrush}">
 
-  <Grid ColumnDefinitions="Auto,*">
+  <Panel>
+    <!-- Sign-in surface, shown until an authenticated session exists. DataContext is the
+         AuthViewModel, so ShowLogin is read from the window's root view model explicitly. -->
+    <controls:LoginView DataContext="{Binding Auth}"
+                        IsVisible="{Binding ((vm:MainWindowViewModel)DataContext).ShowLogin, ElementName=RootWindow}" />
+
+    <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding !ShowLogin}">
     <!-- Left navigation rail -->
     <controls:SidebarNavigation Grid.Column="0" Width="232" />
 
@@ -97,5 +103,6 @@
         </WrapPanel>
       </ScrollViewer>
     </DockPanel>
-  </Grid>
+    </Grid>
+  </Panel>
 </Window>
