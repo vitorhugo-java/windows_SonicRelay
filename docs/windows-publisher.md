@@ -121,10 +121,12 @@ It shows:
 - An **audio visualizer** — a row of teal/blue gradient bars eased from the capture
   level meter, animating while capturing and resting on a flat line when idle.
 - **Latency / RTT** from the real WebRTC estimated round-trip time.
+- **Jitter** and **packet loss** from the connected viewer's RTCP receiver reports about
+  our audio stream, and **bitrate** from the negotiated Opus send bitrate (issue #32).
 
-Values that are not yet measured (jitter, packet loss, bitrate) are shown safely as
-`—`; plumbing them from WebRTC `getStats` is a deliberate follow-up. Design-time
-mock data (`DashboardViewModel.DesignTime`) lets the page preview without a session.
+Values with no reading yet are shown safely as `—` (jitter/loss until the first RTCP
+report arrives; RTT until it is plumbed). Design-time mock data
+(`DashboardViewModel.DesignTime`) lets the page preview without a session.
 
 ## ICE servers and force relay
 

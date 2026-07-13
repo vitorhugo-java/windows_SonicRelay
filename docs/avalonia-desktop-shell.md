@@ -38,9 +38,11 @@ every component reads from. It runs the shared, unit-tested projection
 as change-notifying properties — session code, viewer count, Session/Signaling/WebRTC-ICE
 status, Direct/Relay mode, audio peak/dB, and RTT all come from real session state.
 
-Metrics the presentation layer does not yet supply — **jitter, packet loss, bitrate** — render
-as `—` (never fabricated). Wiring them from WebRTC `getStats` is the next slice, exactly as in
-the WinUI dashboard (see [`windows-publisher.md`](windows-publisher.md)).
+**Jitter** and **packet loss** now come from the connected viewer's RTCP receiver reports about
+our audio stream, and **bitrate** from the negotiated Opus send bitrate — surfaced through the
+same shared projection (see [`windows-publisher.md`](windows-publisher.md)). Readings with no
+value yet still render as `—`, never fabricated: jitter/loss until the first RTCP report
+arrives, and RTT until it is plumbed (the remaining metric follow-up).
 
 `MainWindowViewModel.Attach(PublisherRuntime)` is the seam that binds a live runtime:
 it subscribes to `Workflow.StateChanged` and `IWebRtcPublisher.DiagnosticsChanged` and rebuilds

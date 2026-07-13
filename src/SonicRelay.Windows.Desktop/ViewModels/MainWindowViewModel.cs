@@ -119,7 +119,23 @@ public sealed class MainWindowViewModel : ViewModelBase
                 "viewer-1",
                 PeerConnectionState.Connected,
                 SelectedCandidatePair: "host:host",
-                EstimatedRoundTripTime: TimeSpan.FromMilliseconds(38)),
+                EstimatedRoundTripTime: TimeSpan.FromMilliseconds(38),
+                AudioSend: new AudioSendDiagnostics(
+                    EncodedPacketsSent: 12_000,
+                    PacedPacketsDropped: 0,
+                    SendFailures: 0,
+                    PacingBacklogPackets: 0,
+                    PacingBacklogDuration: TimeSpan.Zero,
+                    FrameDurationMs: 20,
+                    OpusBitrateKbps: 96,
+                    Channels: 2,
+                    ProfileId: "music-96",
+                    InbandFecEnabled: true,
+                    ExpectedPacketLossPercent: 1),
+                AudioReceive: new AudioReceptionDiagnostics(
+                    Jitter: TimeSpan.FromMilliseconds(4),
+                    PacketLossPercent: 0.2,
+                    CumulativePacketsLost: 0)),
         ]);
 
     private static PublisherSnapshot PreviewSnapshot() => new()

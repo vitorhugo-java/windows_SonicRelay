@@ -32,6 +32,9 @@ public sealed class SipSorceryPeerConnection : IWebRtcPeerConnection
     private readonly int samplesPerChannel;
     private volatile bool formatNegotiated;
     private PeerConnectionState state = PeerConnectionState.New;
+    // Latest receiver-side quality from the viewer's RTCP RR about our stream. Reference
+    // assignment of an immutable record is atomic, so no lock is needed to read it.
+    private AudioReceptionDiagnostics? reception;
     private bool disposed;
 
     public SipSorceryPeerConnection(
@@ -76,6 +79,7 @@ public sealed class SipSorceryPeerConnection : IWebRtcPeerConnection
         this.connection.OnAudioFormatsNegotiated += OnAudioFormatsNegotiated;
         this.connection.onicecandidate += OnIceCandidate;
         this.connection.onconnectionstatechange += OnConnectionStateChanged;
+        this.connection.OnReceiveReport += OnReceiveReport;
     }
 
     public string ViewerId { get; }
@@ -96,7 +100,8 @@ public sealed class SipSorceryPeerConnection : IWebRtcPeerConnection
             profile.Channels,
             profile.Id,
             opusEncoder.UseInbandFEC,
-            profile.ExpectedPacketLossPercent));
+            profile.ExpectedPacketLossPercent),
+        reception);
 
     public event Func<WebRtcIceCandidate, CancellationToken, Task>? LocalIceCandidateReady;
     public event Action? DiagnosticsChanged;
@@ -250,6 +255,34 @@ public sealed class SipSorceryPeerConnection : IWebRtcPeerConnection
         }
     }
 
+    /// <summary>
+    /// Captures the viewer's RTCP receiver report about our audio stream — jitter and packet
+    /// loss the viewer observed. Best-effort: any parsing issue leaves the previous reading in
+    /// place and never disturbs the send path.
+    /// </summary>
+    private void OnReceiveReport(System.Net.IPEndPoint endpoint, SDPMediaTypesEnum media, RTCPCompoundPacket report)
+    {
+        if (media != SDPMediaTypesEnum.audio) return;
+        try
+        {
+            var samples = report.ReceiverReport?.ReceptionReports;
+            if (samples is null || samples.Count == 0) return;
+
+            // The sample whose SSRC matches our outgoing audio source is the report about us;
+            // fall back to the first when the SSRC is not yet known.
+            var ourSsrc = connection.AudioRtcpSession?.Ssrc;
+            var sample = samples.FirstOrDefault(s => ourSsrc is null || s.SSRC == ourSsrc) ?? samples[0];
+
+            reception = AudioReceptionDiagnostics.FromReport(
+                sample.Jitter, sample.FractionLost, sample.PacketsLost, SampleRate);
+            DiagnosticsChanged?.Invoke();
+        }
+        catch
+        {
+            // Diagnostics must never take down the stream; keep the last known reading.
+        }
+    }
+
     private void OnConnectionStateChanged(RTCPeerConnectionState next)
     {
         state = next switch
@@ -284,6 +317,7 @@ public sealed class SipSorceryPeerConnection : IWebRtcPeerConnection
         connection.OnAudioFormatsNegotiated -= OnAudioFormatsNegotiated;
         connection.onicecandidate -= OnIceCandidate;
         connection.onconnectionstatechange -= OnConnectionStateChanged;
+        connection.OnReceiveReport -= OnReceiveReport;
         // Stop paced sends before closing the transport they write to.
         await pacer.DisposeAsync().ConfigureAwait(false);
         try
