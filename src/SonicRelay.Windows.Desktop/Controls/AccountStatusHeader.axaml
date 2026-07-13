@@ -14,7 +14,8 @@
 
     <Border Width="34" Height="34"
             CornerRadius="{StaticResource Sonic.RadiusPill}"
-            Background="{DynamicResource Sonic.AccentBlueDarkBrush}">
+            Background="{DynamicResource Sonic.AccentBlueDarkBrush}"
+            AutomationProperties.Name="{Binding AccountLabel}">
       <TextBlock Text="{Binding AccountInitials}"
                  FontSize="{StaticResource Sonic.FontSizeLabel}"
                  FontWeight="SemiBold"

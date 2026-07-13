@@ -20,7 +20,8 @@
                                   HorizontalAlignment="Stretch"
                                   Value="0"
                                   Fill="{DynamicResource Sonic.AccentBlueBrush}"
-                                  TrackBrush="{DynamicResource Sonic.MeterTrackBrush}" />
+                                  TrackBrush="{DynamicResource Sonic.MeterTrackBrush}"
+                                  AutomationProperties.Name="Outgoing bitrate level" />
 
       <TextBlock Classes="metric-label" Text="{Binding BandwidthProfileText}" />
     </StackPanel>
