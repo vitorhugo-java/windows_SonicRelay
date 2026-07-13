@@ -31,12 +31,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             new NavigationItem("⚑", "Settings") { IsEnabled = false },
         ];
 
-        CreateSessionCommand = new RelayCommand(() => Run(w => w.CreateSessionAsync()), () => Can(c => c.CanCreateSession));
-        StartAudioCommand = new RelayCommand(() => Run(w => w.StartAudioAsync()), () => Can(c => c.CanStartAudio));
-        StopAudioCommand = new RelayCommand(() => Run(w => w.StopAudioAsync()), () => Can(c => c.CanStopAudio));
-        EndSessionCommand = new RelayCommand(() => Run(w => w.EndSessionAsync()), () => Can(c => c.CanEndSession));
-        RetryCommand = new RelayCommand(() => Run(w => w.ReconnectSignalingAsync()), () => Can(c => c.CanRetry));
-        LogoutCommand = new RelayCommand(() => Run(w => w.LogoutAsync()), () => Can(c => c.CanLogout));
+        CreateSessionCommand = new RelayCommand(() => Run(w => w.CreateSessionAsync()), () => ShellCommandAvailability.CreateSession(snapshot, HasWorkflow));
+        StartAudioCommand = new RelayCommand(() => Run(w => w.StartAudioAsync()), () => ShellCommandAvailability.StartAudio(snapshot, HasWorkflow));
+        StopAudioCommand = new RelayCommand(() => Run(w => w.StopAudioAsync()), () => ShellCommandAvailability.StopAudio(snapshot, HasWorkflow));
+        EndSessionCommand = new RelayCommand(() => Run(w => w.EndSessionAsync()), () => ShellCommandAvailability.EndSession(snapshot, HasWorkflow));
+        RetryCommand = new RelayCommand(() => Run(w => w.ReconnectSignalingAsync()), () => ShellCommandAvailability.Retry(snapshot, Shell.Capabilities, HasWorkflow));
+        LogoutCommand = new RelayCommand(() => Run(w => w.LogoutAsync()), () => ShellCommandAvailability.Logout(snapshot, Shell.Capabilities, HasWorkflow));
     }
 
     public IReadOnlyList<NavigationItem> Navigation { get; }
@@ -81,11 +81,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseCommandStates();
     }
 
+    private bool HasWorkflow => workflow is not null;
+
     private Task Run(Func<PublisherWorkflow, Task> action) =>
         workflow is null ? Task.CompletedTask : action(workflow);
-
-    private bool Can(Func<PublisherUiCapabilities, bool> capability) =>
-        workflow is not null && capability(Shell.Capabilities) && snapshot?.IsBusy != true;
 
     private void RaiseCommandStates()
     {
