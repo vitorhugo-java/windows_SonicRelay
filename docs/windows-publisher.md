@@ -120,13 +120,14 @@ It shows:
   live **viewer** count.
 - An **audio visualizer** — a row of teal/blue gradient bars eased from the capture
   level meter, animating while capturing and resting on a flat line when idle.
-- **Latency / RTT** from the real WebRTC estimated round-trip time.
-- **Jitter** and **packet loss** from the connected viewer's RTCP receiver reports about
-  our audio stream, and **bitrate** from the negotiated Opus send bitrate (issue #32).
+- **Latency / RTT**, **jitter** and **packet loss** from the connected viewer's RTCP
+  reports about our audio stream, and **bitrate** from the negotiated Opus send bitrate
+  (issue #32). RTT is derived by correlating each sender report we emit with the receiver
+  report that echoes it (see `RtcpRoundTripEstimator`).
 
-Values with no reading yet are shown safely as `—` (jitter/loss until the first RTCP
-report arrives; RTT until it is plumbed). Design-time mock data
-(`DashboardViewModel.DesignTime`) lets the page preview without a session.
+Values with no reading yet are shown safely as `—` (until the first RTCP report
+correlates). Design-time mock data (`DashboardViewModel.DesignTime`) lets the page preview
+without a session.
 
 ## ICE servers and force relay
 

@@ -72,9 +72,9 @@ public sealed record DashboardViewModel
             AudioPeak = level.Peak,
             AudioRms = level.Rms,
             LatencyText = rtt is { } value ? $"{value.TotalMilliseconds:F0} ms" : Unknown,
-            // Jitter and packet loss come from the connected viewer's RTCP receiver reports
-            // (issue #32); they read as unknown until the first report arrives. Bitrate is the
-            // negotiated Opus send bitrate. RTT plumbing remains a follow-up.
+            // Latency (RTT), jitter and packet loss all come from the connected viewer's RTCP
+            // reports (issue #32); each reads as unknown until the first report correlates.
+            // Bitrate is the negotiated Opus send bitrate.
             JitterText = reception is { } r ? $"{r.Jitter.TotalMilliseconds:F0} ms" : Unknown,
             PacketLossText = reception is { } r2 ? $"{r2.PacketLossPercent:F1} %" : Unknown,
             BitrateText = send is { } s ? $"{s.OpusBitrateKbps} kbps" : Unknown,

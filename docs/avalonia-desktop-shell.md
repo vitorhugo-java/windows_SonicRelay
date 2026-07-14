@@ -38,11 +38,12 @@ every component reads from. It runs the shared, unit-tested projection
 as change-notifying properties — session code, viewer count, Session/Signaling/WebRTC-ICE
 status, Direct/Relay mode, audio peak/dB, and RTT all come from real session state.
 
-**Jitter** and **packet loss** now come from the connected viewer's RTCP receiver reports about
-our audio stream, and **bitrate** from the negotiated Opus send bitrate — surfaced through the
-same shared projection (see [`windows-publisher.md`](windows-publisher.md)). Readings with no
-value yet still render as `—`, never fabricated: jitter/loss until the first RTCP report
-arrives, and RTT until it is plumbed (the remaining metric follow-up).
+**Latency (RTT)**, **jitter** and **packet loss** come from the connected viewer's RTCP reports
+about our audio stream, and **bitrate** from the negotiated Opus send bitrate — surfaced through
+the same shared projection (see [`windows-publisher.md`](windows-publisher.md)). RTT is derived
+by correlating each sender report we emit with the receiver report that echoes it
+(`RtcpRoundTripEstimator`). Readings with no value yet still render as `—`, never fabricated,
+until the first RTCP report correlates.
 
 Command availability comes from the snapshot's own action guards
 (`PublisherSnapshot.CanStartAudio`/`CanStopAudio`/`CanCreateSession`/`CanEndSession`, via the
@@ -96,9 +97,8 @@ and the tray is created defensively so a missing tray backend never blocks launc
 ## Scope boundaries
 
 - WinUI stays the shipped UI until the Avalonia shell reaches minimum functional parity; this
-  work runs **side by side** and does not replace it.
-- RTT plumbing and flipping the default from WinUI to Avalonia once parity is validated are the
-  remaining phase-2 items.
+  work runs **side by side** and does not replace it. Flipping the default to Avalonia (and
+  retiring WinUI) is the remaining phase-2 step, once parity is validated on Windows.
 - Linux/PipeWire capture and packaging are phases 3–5.
 
 ## Running and testing
