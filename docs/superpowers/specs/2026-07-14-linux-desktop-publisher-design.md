@@ -1,24 +1,24 @@
-# Linux Desktop Publisher — Design Spec (Issue #32, Phase 3–5)
+# Linux Desktop Publisher — Design Spec (Issue #32, Phases 3–5)
 
-## Provenance / Context
+## Provenance / context
 
 - **Date:** 2026-07-14
 - **Repository:** `vitorhugo-dotnet/windows_SonicRelay`
 - **Driven by:** GitHub issue [#32 — Add Linux support with a cross-platform architecture](https://github.com/vitorhugo-dotnet/windows_SonicRelay/issues/32)
 - **Previous design:** [`2026-07-11-avalonia-desktop-shell-design.md`](./2026-07-11-avalonia-desktop-shell-design.md)
-- **Current state:** the Avalonia shell has reached Windows parity and replaced the previous WinUI application on `main`.
+- **Current state:** the Avalonia shell reached Windows parity and replaced the former WinUI application on `main`.
 
-The previous design intentionally stopped before Linux audio capture and packaging. This document defines the next implementation slice: run the existing Avalonia publisher as a real Linux application, capture a selected system-output sink through PipeWire, reuse the current authentication/signaling/WebRTC/Opus runtime, and publish supported Linux artifacts.
+The previous design deliberately stopped before Linux capture and distribution. This document defines the remaining work: run the existing Avalonia publisher as a real Linux application, capture a selected system-output sink through PipeWire, reuse the existing authentication/signaling/WebRTC/Opus runtime, and publish supported Linux artifacts.
 
-## Status and scope
+## Scope
 
-This design covers the remaining Linux work from issue #32:
+This design covers:
 
 1. **Phase 3 — Linux audio adapter and headless validation**
-2. **Phase 4 — Linux desktop integration using the existing Avalonia shell**
+2. **Phase 4 — Linux desktop composition using the existing Avalonia shell**
 3. **Phase 5 — Linux CI, packaging, release assets, and documentation**
 
-This is one feature initiative but should be implemented as three reviewable pull requests matching the phases above. Each PR must leave `main` buildable and must not regress the Windows publisher.
+Implement these as three reviewable pull requests. Every PR must leave `main` buildable and preserve Windows behavior.
 
 ## Current codebase state
 
@@ -26,109 +26,105 @@ Relevant facts on `main`:
 
 - `src/SonicRelay.Windows.Desktop` is the shipped Avalonia application.
 - `App.axaml.cs` attaches a live `PublisherRuntime` only on Windows. Linux currently opens `MainWindowViewModel.CreatePreview()`.
-- `PublisherRuntime.Create(Uri, IAudioCaptureService)` is already independent from a concrete capture technology, but it creates the token store and other platform-sensitive dependencies internally.
-- `SonicRelay.Windows.Audio.AudioCaptureService` contains reusable lifecycle, diagnostics, retry, selected-device, and recovery behavior.
-- The default `AudioCaptureService` constructor creates `WasapiLoopbackBackend` and `WasapiOutputDeviceProbe` internally and is marked Windows-only.
-- The backend/probe seams needed by Linux exist but are internal implementation details.
-- `UserScopedTokenStore` uses Windows DPAPI and a Windows-specific storage directory.
-- The WebRTC layer uses managed `SIPSorcery` and `Concentus` packages and has no intentional WASAPI or WinUI dependency.
+- `PublisherRuntime.Create(Uri, IAudioCaptureService)` already accepts a platform-neutral capture service, but still constructs token storage internally.
+- `AudioCaptureService` already owns reusable lifecycle, diagnostics, retry, device selection, and recovery behavior.
+- The default `AudioCaptureService` constructor creates WASAPI implementations internally and is Windows-only.
+- `IAudioCaptureBackend` is internal; `IAudioOutputDeviceProbe` is already public.
+- `UserScopedTokenStore` uses Windows DPAPI and a Windows-specific directory.
+- WebRTC uses managed `SIPSorcery` and `Concentus` packages and has no intentional WASAPI/WinUI dependency.
 - CI and release packaging currently run only on Windows and publish `win-x64` ZIP, EXE, and MSI assets.
-- The solution and project names still contain `Windows`. Renaming every project is unrelated churn and is not required for Linux functionality.
+- Historical `SonicRelay.Windows.*` names are not a functional blocker. Renaming all projects is unrelated churn and is outside this phase.
 
 ## Objective
 
-A user on the initially supported Linux distribution must be able to:
+A user on the initially supported Linux environment must be able to:
 
 1. install or extract SonicRelay without installing .NET;
 2. launch the same Avalonia shell used on Windows;
-3. authenticate against the existing SonicRelay API;
+3. authenticate against the existing API;
 4. list available system-output sinks;
-5. select the system default or a specific sink;
+5. select the default or a specific sink;
 6. create a publisher session;
-7. capture desktop audio through PipeWire without root;
+7. capture desktop output through PipeWire without root;
 8. stream through the existing WebRTC/Opus path in Direct or Relay mode;
-9. see the existing real diagnostics and reconnect behavior;
-10. minimize to tray when the desktop environment exposes a compatible tray implementation;
-11. receive actionable errors when PipeWire or another required desktop service is unavailable.
+9. see real diagnostics and reconnection state;
+10. use tray behavior where the desktop exposes a compatible implementation;
+11. receive actionable errors when Linux desktop dependencies are unavailable.
 
 ## Initial support matrix
 
-### Officially supported in this phase
+### Officially supported
 
 - **Architecture:** `linux-x64`
 - **Distribution:** Ubuntu 24.04 LTS Desktop
 - **Desktop:** GNOME
-- **Display sessions:** Ubuntu Wayland session and Ubuntu on Xorg
-- **Audio server:** PipeWire with WirePlumber
-- **Distribution artifacts:** self-contained `.deb` and portable `.tar.gz`
+- **Sessions:** Ubuntu Wayland and Ubuntu on Xorg
+- **Audio:** PipeWire with WirePlumber
+- **Artifacts:** self-contained `.deb` and portable `.tar.gz`
 
-The application UI may run through Avalonia's Linux/X11 backend or XWayland under a Wayland desktop. Audio capture talks to the user's PipeWire session and is not coupled to X11 or Wayland.
+Avalonia may render through X11/XWayland under a Wayland desktop. Audio capture talks to the user's PipeWire session and is independent from the display protocol.
 
-### Best effort, not release-gating
+### Best effort
 
-- Debian 13 and compatible Debian-based distributions
-- KDE Plasma where the required PipeWire and tray services are available
-- Other x64 distributions using the portable archive
+- Ubuntu 26.04 LTS
+- Debian 13 and compatible Debian-based systems
+- KDE Plasma with compatible PipeWire and tray services
+- other x64 distributions using the portable archive
 
-### Explicitly out of scope
+### Out of scope
 
 - `linux-arm64`
-- Flatpak, Snap, AppImage, or RPM packaging
+- Flatpak, Snap, AppImage, or RPM
 - macOS
 - native Wayland-only rendering as a requirement
-- PulseAudio legacy capture as the primary implementation
+- PulseAudio legacy capture as the primary adapter
 - Wine
-- support for every desktop environment or tray protocol
-- renaming the repository or all `SonicRelay.Windows.*` projects
-- autostart support in the first Linux release
+- support for every desktop environment/tray protocol
+- broad repository/project renaming
+- Linux autostart in the first release
 
-## Selected approach
+## Selected capture approach
 
 ### Decision
 
-Implement the first Linux capture adapter by supervising the official PipeWire command-line tools:
+Use supervised official PipeWire/WirePlumber tools for the first supported release:
 
-- `pw-dump` for machine-readable node discovery;
-- `pw-record` for raw PCM capture from the selected target;
+- `pw-dump` for JSON node discovery;
+- `wpctl inspect` for resolving the current default sink and inspecting a selected sink;
+- `pw-record` for raw PCM capture;
 - `secret-tool` for Secret Service-backed token persistence when available.
 
-The adapter starts `pw-record` directly with `ProcessStartInfo.ArgumentList`, reads raw PCM from standard output, converts the stream into the existing `AudioFrame` model, and maps process failures into the existing `AudioCaptureError` model.
+The adapter launches tools directly with `ProcessStartInfo.ArgumentList`, never through a shell.
 
-### Why this approach
+### Why
 
-This is the smallest implementation that uses the installed PipeWire stack directly and preserves the existing managed audio/WebRTC pipeline. It avoids:
+This is the smallest maintainable implementation that uses the installed PipeWire stack and preserves the existing managed audio/WebRTC pipeline. It avoids:
 
-- maintaining custom `libpipewire` P/Invoke bindings;
-- adopting GStreamer and its plugin/runtime matrix;
-- depending on an unproven third-party .NET PipeWire wrapper;
-- duplicating the existing capture lifecycle and recovery logic;
-- coupling the application to PulseAudio compatibility APIs.
+- custom `libpipewire` P/Invoke and ABI/resource-lifetime risk;
+- GStreamer and its native plugin matrix;
+- an unproven third-party .NET PipeWire wrapper;
+- duplicating `AudioCaptureService` lifecycle/recovery logic;
+- coupling the primary implementation to PulseAudio compatibility.
 
-`pw-record` supports raw, rate/channel/format configuration, target selection, latency configuration, and streaming output to stdout. Those capabilities match SonicRelay's existing PCM ingestion boundary.
+`pw-record` can stream raw PCM to stdout with explicit rate, channels, format, latency, and target. That matches the existing `AudioFrame` boundary.
 
-### Alternatives considered
+### Alternatives rejected for this phase
 
-#### A. Native `libpipewire` binding
+#### Native `libpipewire`
 
-**Advantages:** lowest process overhead, direct graph events, precise pause/resume and buffer control.
+Provides the most control, but adds unsafe interop and native lifecycle complexity. Consider it only if profiling proves the supervised-process adapter misses defined latency or reliability targets.
 
-**Rejected for the initial release:** significantly higher unsafe interop complexity, ABI/resource-lifetime risk, and maintenance cost. It remains a future optimization only if profiling demonstrates that the supervised-process adapter cannot meet latency or reliability targets.
+#### GStreamer `pipewiresrc`
 
-#### B. GStreamer with `pipewiresrc`
+Mature, but adds a large runtime/plugin dependency for conversion and media graph features SonicRelay already implements.
 
-**Advantages:** mature media graph and many conversion facilities.
+#### PulseAudio monitor source
 
-**Rejected:** introduces a large native dependency and plugin compatibility surface while SonicRelay already owns resampling/framing/Opus/WebRTC behavior. It solves far more media problems than this application has.
+Historically broad, but issue #32 explicitly selected PipeWire. PulseAudio compatibility may be a future fallback, not the main design.
 
-#### C. PulseAudio monitor capture
+#### `xdg-desktop-portal` ScreenCast
 
-**Advantages:** broad historical compatibility and simple tools.
-
-**Rejected as the primary path:** PipeWire is the target architecture from issue #32. PulseAudio compatibility may be investigated later as a fallback for unsupported systems, but it must not define the Linux implementation.
-
-#### D. `xdg-desktop-portal` ScreenCast portal
-
-**Rejected for audio-only capture:** the ScreenCast portal selects monitor/window/virtual screen sources and returns screencast PipeWire streams. It is not a general desktop-output audio selection API. Sandboxed packaging therefore remains a separate future design rather than being mixed into the initial `.deb` release.
+The ScreenCast portal selects monitor/window/virtual visual sources and returns screencast PipeWire streams. It is not a general desktop-output audio picker. Sandboxed packaging therefore requires a separate design.
 
 ## Target architecture
 
@@ -138,33 +134,30 @@ SonicRelay.Windows.Desktop (existing Avalonia shell)
   +-- DesktopRuntimeFactory
         |
         +-- WindowsPlatformComposition
-        |     +-- AudioCaptureService + WasapiLoopbackBackend
-        |     +-- WasapiOutputDeviceProbe
-        |     +-- UserScopedTokenStore + DPAPI
+        |     +-- AudioCaptureService + WASAPI backend/probe
+        |     +-- DPAPI token store
         |
         +-- LinuxPlatformComposition
-              +-- AudioCaptureService + PipeWireProcessBackend
-              +-- PipeWireOutputDeviceProbe
-              +-- SecretServiceTokenStore
-                    +-- InMemoryTokenStore fallback
+              +-- AudioCaptureService + PipeWire backend/probe
+              +-- Secret Service token store
+                    +-- in-memory fallback
 
 PublisherRuntime / Presentation / WebRTC / Signaling / API Client
-  remain shared and platform-agnostic
+remain shared and platform-neutral.
 ```
 
-### Project layout
-
-Add:
+### New project
 
 ```text
 src/SonicRelay.Platform.Linux/
   Audio/
+    LinuxProcessRunner.cs
     PipeWireCommandLocator.cs
     PipeWireNode.cs
     PipeWireNodeParser.cs
+    PipeWireSinkResolver.cs
     PipeWireOutputDeviceProbe.cs
     PipeWireProcessBackend.cs
-    PipeWireProcessFactory.cs
     PcmFrameAssembler.cs
   Storage/
     SecretServiceTokenStore.cs
@@ -174,13 +167,13 @@ src/SonicRelay.Platform.Linux/
 tests/SonicRelay.Platform.Linux.Tests/
 ```
 
-Keep the existing Windows implementation in `SonicRelay.Windows.Audio` during this phase. A broad namespace/project rename provides no user value and would make regression review unnecessarily difficult.
+Keep the Windows implementation in `SonicRelay.Windows.Audio` during this phase. The asymmetry is temporary technical naming debt, not a reason to mix a large rename with Linux support.
 
-## Shared audio contract changes
+## Shared audio seams
 
-The reusable capture orchestration already exists and must stay the single source of truth for start/stop/recovery/diagnostics.
+Keep `AudioCaptureService` as the single owner of start/stop/pause/recovery/diagnostics.
 
-Make the minimum seams public:
+Make only the internal backend seam public:
 
 ```csharp
 public interface IAudioCaptureBackend : IAsyncDisposable
@@ -193,14 +186,9 @@ public interface IAudioCaptureBackend : IAsyncDisposable
     Task ResumeAsync(CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
 }
-
-public interface IAudioOutputDeviceProbe
-{
-    IReadOnlyList<AudioOutputDevice> GetOutputDevices();
-}
 ```
 
-Expose a platform-neutral construction path:
+Expose a platform-neutral factory while keeping the current Windows constructor for compatibility:
 
 ```csharp
 public static AudioCaptureService Create(
@@ -209,124 +197,133 @@ public static AudioCaptureService Create(
     AudioRecoveryPolicy? recoveryPolicy = null);
 ```
 
-The existing Windows constructor remains for compatibility, but `App.axaml.cs` must stop constructing it directly. Both platforms go through the same `DesktopRuntimeFactory`.
+Move PCM16/float peak and RMS calculation into a shared pure helper so WASAPI and PipeWire do not duplicate it.
 
-Move PCM level calculation into a shared pure helper so WASAPI and PipeWire do not maintain separate peak/RMS implementations.
+Replace generic Windows-specific messages inside `AudioCaptureService` with platform-neutral text. Concrete adapters remain responsible for actionable platform details.
 
-Replace Windows-specific generic messages inside `AudioCaptureService` with platform-neutral text. Platform adapters remain responsible for specific actionable details.
+## Sink discovery and selection
 
-## PipeWire device discovery
+### Enumerating sinks
 
-### Command
+Run `pw-dump` and parse JSON objects whose type is `PipeWire:Interface:Node` and whose `media.class` represents an audio sink.
 
-Run `pw-dump` without a shell and parse its JSON output.
+Map each sink to the existing model:
 
-### Node filtering
+```csharp
+new AudioOutputDevice(
+    Id: nodeName,
+    Name: description,
+    IsDefault: isDefault);
+```
 
-Return output devices from PipeWire nodes that represent audio sinks. Each `AudioOutputDevice` must contain:
+Rules:
 
-- stable preference key: `node.name`;
-- display name: `node.description`, then `device.description`, then `node.nick`, then `node.name`;
-- platform: `linux`;
-- default marker when the session manager metadata identifies it as default, when available.
+- `Id` is `node.name`, not a numeric PipeWire ID;
+- display name fallback order: `node.description`, `device.description`, `node.nick`, `node.name`;
+- malformed/oversized output returns an empty list and a bounded diagnostic rather than crashing Settings;
+- the existing `System default` row remains represented by `null` preference.
 
-Always prepend the existing `System default` option. Selecting it stores `null` and lets `pw-record` use automatic target selection.
+### Resolving the default sink
 
-### Persistence and hotplug
+`pw-record` must never rely on automatic target selection for desktop-output capture. In record mode, an automatic target may resolve to a capture source such as a microphone.
 
-Persist `node.name`, not an ephemeral numeric object ID. Before each capture start:
+For `System default`:
+
+1. run `wpctl inspect @DEFAULT_AUDIO_SINK@`;
+2. extract `node.name` and, when available, `object.serial`;
+3. pass that resolved sink explicitly to `pw-record`.
+
+If no default sink can be resolved, return `AudioCaptureError.NoDevice`.
+
+### Resolving a selected sink
+
+Persist `node.name`. Before every capture start:
 
 1. re-run discovery;
-2. resolve the saved `node.name` to the current node;
-3. use its current `object.serial` when available, otherwise use `node.name`;
-4. fall back to system default if the stored sink no longer exists;
-5. emit a diagnostic event describing the fallback without logging secrets.
+2. find the saved `node.name`;
+3. inspect the current node;
+4. prefer `object.serial` as the live `pw-record` target, otherwise use `node.name`;
+5. if missing, fall back to the current default sink and emit a diagnostic event.
 
-Discovery failures must return an empty device list plus an actionable platform diagnostic; they must not crash the settings page.
+Numeric PipeWire object IDs must not be persisted because they can be reused.
 
 ## PipeWire capture process
 
-### Process invocation
-
-For the system default sink:
+### Invocation
 
 ```text
-pw-record --raw --rate=48000 --channels=2 --format=s16 --latency=20ms -
+pw-record
+  --raw
+  --rate=48000
+  --channels=2
+  --format=s16
+  --latency=20ms
+  --target=<resolved object.serial or node.name>
+  -
 ```
-
-For a selected sink, add:
-
-```text
---target=<resolved object.serial or node.name>
-```
-
-Arguments must be passed through `ProcessStartInfo.ArgumentList`; never build a shell command string.
 
 Configuration:
 
 ```text
 sample rate: 48000 Hz
 channels: 2
-sample format: signed 16-bit little-endian PCM
+format: signed 16-bit little-endian PCM
 requested latency: 20 ms
 stdout: raw PCM
-stderr: captured separately for bounded diagnostics
+stderr: bounded diagnostics
 stdin: closed
-shell execute: false
+UseShellExecute: false
 ```
 
-The initial adapter intentionally normalizes Linux capture to 48 kHz stereo PCM16. Existing downstream code remains responsible for the configured Opus profile and WebRTC transmission.
+A target is mandatory. The adapter must verify that it resolves to an audio sink/output monitor path, not a microphone source.
 
 ### Frame assembly
 
-`PcmFrameAssembler` reads stdout continuously and emits exact 20 ms frames:
+Emit exact 20 ms frames:
 
 ```text
-48000 samples/sec × 0.020 sec × 2 channels × 2 bytes = 3840 bytes/frame
+48000 × 0.020 × 2 channels × 2 bytes = 3840 bytes
 ```
 
-Requirements:
+`PcmFrameAssembler` must:
 
 - tolerate arbitrary pipe read boundaries;
 - never emit partial samples;
-- keep at most one incomplete frame buffered;
-- timestamp frames using a monotonic `Stopwatch` from capture start;
-- calculate peak/RMS with the shared PCM level helper;
-- stop promptly after cancellation;
-- never block the UI thread.
+- retain at most one incomplete frame;
+- timestamp from a monotonic `Stopwatch`;
+- calculate levels using the shared helper;
+- stop promptly on cancellation;
+- never run reads on the UI thread.
 
-### Pause and resume
+### Pause/resume
 
-The initial process adapter implements pause as a controlled process stop and resume as a fresh start against the same selected sink. This creates a small discontinuity but avoids Unix signal interop and keeps lifecycle behavior deterministic.
+For the first adapter, pause performs a controlled process stop and resume starts a new process against the same resolved sink. The small discontinuity is preferable to Unix signal interop in the MVP.
 
-### Process supervision
+### Supervision
 
-`PipeWireProcessBackend` owns exactly one `pw-record` process.
-
-- `StartAsync` succeeds only after the process remains alive and the first complete PCM frame is received, with a bounded startup timeout.
+- Exactly one `pw-record` process per backend instance.
+- `StartAsync` completes only after the first complete PCM frame arrives, with a bounded timeout.
 - Unexpected exit after startup raises `Faulted`.
-- `StopAsync` cancels reads, requests process termination, waits for a bounded grace period, then kills the process tree if necessary.
-- Stderr is bounded in memory and redacted before entering diagnostics.
+- `StopAsync` cancels reads, requests termination, waits briefly, then kills the process tree if needed.
+- Stderr is capped and redacted.
 - Disposal is idempotent.
 
 ### Error mapping
 
-Map failures into existing errors:
-
-| Linux failure | `AudioCaptureError` | User-facing behavior |
+| Failure | `AudioCaptureError` | Behavior |
 |---|---|---|
-| `pw-record` or `pw-dump` missing | `PlatformFailure` | Explain that PipeWire tools are required and name the package dependency |
-| PipeWire session unavailable | `PlatformFailure` | Ask the user to verify the user PipeWire service |
-| selected sink missing | `NoDevice` | Fall back/retry through existing recovery policy |
-| process exits during capture | `DeviceLost` | Trigger existing exponential recovery |
-| permission/socket access denied | `AccessDenied` | Explain that the app must run as the desktop user, not root |
-| malformed discovery JSON | `PlatformFailure` | Record a bounded diagnostic and keep the app usable |
+| missing `pw-record`, `pw-dump`, or `wpctl` | `PlatformFailure` | name the missing dependency/package |
+| PipeWire session unavailable | `PlatformFailure` | tell the user to verify user PipeWire/WirePlumber services |
+| no/default sink missing | `NoDevice` | existing recovery policy retries |
+| sink/process lost during capture | `DeviceLost` | existing recovery policy restarts capture |
+| permission/socket denied | `AccessDenied` | explain the app must run as the desktop user, not root |
+| malformed discovery/inspection output | `PlatformFailure` | bounded diagnostic; UI/signaling stay alive |
 
-A process failure must never take down signaling or the Avalonia UI.
+A capture failure must not terminate signaling or the Avalonia process.
 
-## Platform composition
+## Platform runtime composition
 
-Add `DesktopRuntimeFactory` in the desktop project. It returns a result containing either a configured runtime or an actionable unsupported-platform error.
+Add `DesktopRuntimeFactory` to the desktop project.
 
 ```csharp
 public sealed record DesktopRuntimeDependencies(
@@ -335,7 +332,7 @@ public sealed record DesktopRuntimeDependencies(
     string DeviceName);
 ```
 
-Change runtime composition to accept dependencies rather than constructing the token store internally:
+Change runtime composition to accept dependencies:
 
 ```csharp
 public static PublisherRuntime Create(
@@ -343,47 +340,45 @@ public static PublisherRuntime Create(
     DesktopRuntimeDependencies dependencies);
 ```
 
-Platform selection:
+Selection:
 
 ```text
 Windows -> WASAPI + DPAPI
 Linux   -> PipeWire + Secret Service
-Other   -> unsupported-platform state; no preview data
+Other   -> explicit unsupported-platform state
 ```
 
-`App.axaml.cs` must no longer call `CreatePreview()` on Linux. Preview mode remains available only to the Avalonia designer and explicit visual tests.
+`App.axaml.cs` must stop calling `CreatePreview()` on Linux. Preview remains only for the Avalonia designer and explicit visual tests.
 
-Startup failures leave the real login shell visible with a platform error and retry action. They must not silently show representative fake metrics.
+Startup failures leave the real shell visible with an actionable platform error and retry action. They must not show fake session metrics.
 
 ## Linux token storage
 
-### Primary store
+### Primary
 
-Implement `SecretServiceTokenStore` by invoking `secret-tool` directly:
+Implement `SecretServiceTokenStore` through `secret-tool`:
 
-- store the serialized token set through stdin;
+- serialize token data and provide it through stdin;
 - use fixed attributes such as `application=sonicrelay` and `purpose=publisher-token`;
-- retrieve and clear through the same attributes;
-- never pass token contents in command-line arguments;
-- never log stdout containing token material;
-- use bounded timeouts and cancellation;
+- lookup/clear using the same attributes;
+- never place token contents in arguments or environment variables;
+- never log token-bearing stdout;
+- use bounded timeout/cancellation;
 - map unavailable/locked Secret Service to `SecureStorageUnavailable`.
 
 ### Fallback
 
-When Secret Service or `secret-tool` is unavailable, use an in-memory token store for the current process and show a non-blocking warning:
+When `secret-tool` or Secret Service is unavailable, use an in-memory store and show:
 
 ```text
 Secure session storage is unavailable. You can continue, but you will need to sign in again after restarting SonicRelay.
 ```
 
-There is no plaintext-on-disk fallback.
+Never create a plaintext token file. Existing Windows DPAPI behavior and files remain unchanged.
 
-Windows DPAPI behavior and existing token files must remain unchanged.
+## Linux paths
 
-## Linux application data paths
-
-Introduce a small platform path resolver in Core:
+Add a platform path resolver:
 
 ```text
 config: $XDG_CONFIG_HOME/sonicrelay
@@ -394,87 +389,79 @@ cache:  $XDG_CACHE_HOME/sonicrelay
         fallback ~/.cache/sonicrelay
 ```
 
-Use the resolver for Linux preferences, diagnostics, and configuration. Preserve all current Windows paths to avoid migrating or losing existing Windows settings.
+Use it for Linux preferences, diagnostics, and configuration. Preserve current Windows paths.
 
-File permissions for Linux-created directories/files must rely on the current user's umask and must never intentionally grant group/world write access.
+## Tray and lifecycle
 
-## Tray and window lifecycle
+Keep the Avalonia tray integration but expose capability explicitly:
 
-Keep the existing Avalonia tray integration, but make tray capability explicit.
+- tray initialization failure never blocks launch;
+- minimize/close-to-tray is enabled only after tray creation succeeds;
+- without tray support, closing exits instead of leaving an unreachable hidden process;
+- diagnostics report tray availability;
+- Ubuntu 24.04 GNOME is the release gate.
 
-- Tray initialization failure must not prevent launch.
-- Close/minimize-to-tray is enabled only after a tray icon is successfully created.
-- When no compatible tray implementation exists, closing the main window exits normally instead of leaving an invisible background process.
-- The diagnostics page records whether tray support is active.
-- Ubuntu 24.04 GNOME is the release-gating tray environment for this phase.
-
-Autostart is deferred. It should be designed separately after the first Linux release proves stable.
+Autostart is deferred to a separate design.
 
 ## Desktop project changes
 
-Make Windows-only MSBuild properties conditional and allow Linux publishing:
-
 - use `Exe` for Linux and `WinExe` for Windows;
-- apply `app.manifest` and `BuiltInComInteropSupport` only to Windows targets;
-- keep the existing Avalonia package line unless a separate dependency update is required;
-- add a reference to `SonicRelay.Platform.Linux`;
-- keep `UsePlatformDetect()` in the Avalonia bootstrap.
+- condition `app.manifest` and `BuiltInComInteropSupport` to Windows targets;
+- keep the current Avalonia version unless a separate upgrade is required;
+- reference `SonicRelay.Platform.Linux`;
+- keep `UsePlatformDetect()`;
+- do not expose Linux tool/process details to views or view models.
 
-The UI and view models must not reference `pw-record`, `pw-dump`, `secret-tool`, D-Bus, or Linux-specific paths directly.
+## CI
 
-## CI design
-
-### Build and test matrix
-
-Run solution build/tests on:
+### Required matrix
 
 ```text
 windows-latest
 ubuntu-24.04
 ```
 
-The Ubuntu job installs only dependencies required to build/render tests. Unit tests for process adapters use fakes and must not require a live audio session in GitHub Actions.
+Linux unit tests use fake process runners and do not require a live PipeWire session in GitHub Actions.
 
-### Linux-specific verification
+### Linux tests
 
-Add tests for:
+- `pw-dump` parsing and size limits;
+- sink filtering/name fallback;
+- default sink `wpctl inspect` parsing;
+- stable `node.name` persistence and live target resolution;
+- mandatory target enforcement;
+- command argument construction without shell interpolation;
+- PCM frame assembly across arbitrary reads;
+- peak/RMS parity with WASAPI;
+- startup timeout/cancellation;
+- exit/error mapping;
+- device-loss recovery through `AudioCaptureService`;
+- Secret Service invocation without leakage;
+- platform composition;
+- Avalonia Linux startup smoke test;
+- repository/release structure checks.
 
-- `pw-dump` JSON parsing;
-- sink filtering and display-name fallback;
-- stable `node.name` preference resolution;
-- command argument construction;
-- raw PCM frame assembly across arbitrary read boundaries;
-- peak/RMS calculation parity with WASAPI;
-- startup timeout and cancellation;
-- process exit/error mapping;
-- device-loss recovery integration with `AudioCaptureService`;
-- Secret Service process invocation without secret leakage;
-- platform composition selection;
-- desktop startup smoke test on Linux;
-- repository structure expectations for the new project and release assets.
+### Manual first-release gate
 
-### Manual release gate
-
-Before the first public Linux release, validate on a real Ubuntu 24.04 desktop:
+Validate on a real Ubuntu 24.04 desktop:
 
 1. Wayland session;
 2. Xorg session;
 3. default sink capture;
-4. explicit HDMI/headset sink selection;
-5. sink disconnect/reconnect;
-6. Direct WebRTC;
-7. forced TURN Relay;
-8. minimize/restore from tray;
-9. app restart with Secret Service available;
-10. app restart with Secret Service unavailable;
-11. `.deb` install, upgrade, and uninstall;
-12. portable archive launch.
+4. HDMI/headset sink selection;
+5. prove output is captured and microphone is not;
+6. sink disconnect/reconnect;
+7. Direct WebRTC;
+8. forced TURN Relay;
+9. tray minimize/restore;
+10. restart with Secret Service available;
+11. restart with Secret Service unavailable;
+12. `.deb` install/upgrade/uninstall;
+13. portable archive launch.
 
 ## Packaging and release
 
-### Linux artifacts
-
-Publish self-contained `linux-x64` output and create:
+### Assets
 
 ```text
 SonicRelay-LinuxPublisher-linux-x64-<version>.tar.gz
@@ -482,234 +469,219 @@ SonicRelay-LinuxPublisher-linux-x64-<version>.deb
 checksums-sha256.txt
 ```
 
-Do not publish a Linux single-file binary in the first release. A folder-based publish is easier to inspect and avoids unnecessary native-library extraction behavior.
+Use folder-based self-contained publish for the first release. Do not publish a Linux single-file binary yet.
 
-### Debian package layout
+### Debian layout
 
 ```text
-/usr/lib/sonicrelay/                 self-contained publish output
-/usr/bin/sonicrelay                  small exec wrapper
+/usr/lib/sonicrelay/                 publish output
+/usr/bin/sonicrelay                  exec wrapper
 /usr/share/applications/sonicrelay.desktop
 /usr/share/icons/hicolor/.../sonicrelay.png|svg
 ```
 
-Package metadata must declare the Ubuntu/Debian packages that provide:
+Package dependencies must provide:
 
-- PipeWire command-line tools (`pw-record`, `pw-dump`);
-- Secret Service CLI (`secret-tool`);
-- Avalonia Linux/X11 native dependencies;
-- CA certificates and other required native runtime libraries.
+- `pw-record` and `pw-dump`;
+- `wpctl`/WirePlumber;
+- `secret-tool`;
+- Avalonia Linux/X11 native libraries;
+- CA certificates and required native runtime libraries.
 
-Installing the `.deb` may require administrator authorization because it writes system application directories. Running SonicRelay must never require root.
+Installing the package may require administrator authorization. Running SonicRelay must never require root.
 
 ### Desktop entry
 
-The `.desktop` entry must:
-
-- launch `sonicrelay`;
-- use `Terminal=false`;
-- use the SonicRelay icon;
-- categorize the application under Audio/Network/Utility as appropriate;
-- set a stable startup WM class when supported;
-- avoid embedding environment-specific paths.
+- `Exec=sonicrelay`
+- `Terminal=false`
+- stable SonicRelay icon and WM class
+- suitable Audio/Network/Utility categories
+- no environment-specific absolute user paths
 
 ### Release workflow
 
-Keep Windows assets unchanged. Extend release packaging with a Linux job that:
+Keep Windows assets unchanged. Add a Linux packaging job that:
 
 1. restores for `linux-x64`;
 2. publishes self-contained output;
-3. creates `BUILD-INFO.txt`;
-4. builds `.tar.gz` and `.deb`;
-5. calculates SHA-256 hashes;
+3. writes `BUILD-INFO.txt`;
+4. creates `.tar.gz` and `.deb`;
+5. computes SHA-256 hashes;
 6. uploads artifacts;
-7. attaches Linux assets to the same GitHub Release as Windows assets.
+7. attaches Linux assets to the same GitHub Release.
 
-A failure in either platform packaging must fail the release rather than publish a partial official release without an explicit manual override.
+An official release fails if either platform packaging fails, unless a deliberate manual override is added later.
 
-## Diagnostics and observability
+## Diagnostics
 
-Add Linux platform properties to the existing diagnostic report:
+Add:
 
 ```text
 osPlatform=linux
-osDescription=<redacted OS description>
+osDescription=<redacted>
 desktopSession=wayland|x11|unknown
 pipeWireAvailable=true|false
+wirePlumberAvailable=true|false
 pwRecordVersion=<version or unavailable>
-pwDumpVersion=<version or unavailable>
 secretServiceAvailable=true|false
 trayAvailable=true|false
-selectedAudioDevice=<friendly name; no token data>
+selectedAudioDevice=<friendly name>
 ```
 
-Do not include:
+Never include tokens, Secret Service output, arbitrary environment variables, unbounded stderr, or unredacted home paths.
 
-- access/refresh tokens;
-- complete Secret Service output;
-- arbitrary environment variables;
-- unbounded stderr;
-- usernames/home-directory paths unless already redacted by the diagnostic layer.
+## Security
 
-## Security requirements
-
-- Never run SonicRelay or PipeWire tools through `sudo`.
-- Never invoke `/bin/sh -c` for platform commands.
-- Use `ProcessStartInfo.ArgumentList` for every argument.
-- Bound process startup, shutdown, and read operations.
-- Kill child processes during cancellation/disposal.
-- Never persist tokens in plaintext.
-- Never place tokens in arguments, environment variables, logs, or diagnostics.
-- Treat discovery JSON and process output as untrusted input.
-- Cap parsed/output sizes before allocation.
-- Keep the backend URL validation and existing HTTPS/WSS rules unchanged.
-- Linux support must not weaken Windows DPAPI storage or Windows release behavior.
+- never run through `sudo`;
+- never invoke `/bin/sh -c`;
+- use `ProcessStartInfo.ArgumentList`;
+- bound startup, shutdown, reads, and parsed output sizes;
+- kill child processes during cancellation/disposal;
+- never persist tokens in plaintext;
+- never place tokens in args/env/logs;
+- treat process/JSON output as untrusted;
+- preserve current HTTPS/WSS validation;
+- do not weaken Windows DPAPI or Windows release behavior.
 
 ## Performance targets
 
-On Ubuntu 24.04 x64 with a typical desktop workload:
-
 ```text
-capture format: 48 kHz stereo PCM16
-capture frame: 20 ms
-additional capture-process startup target: <= 1.5 s
-steady-state capture CPU target: <= 5% of one logical core
-steady-state adapter memory growth: no unbounded growth
-capture-to-existing-WebRTC-path latency regression: <= 40 ms versus equivalent Windows path, excluding network variance
+capture: 48 kHz stereo PCM16
+frame: 20 ms
+capture startup: <= 1.5 s
+steady adapter CPU: <= 5% of one logical core
+memory: no unbounded growth
+capture-path latency regression: <= 40 ms versus equivalent Windows path, excluding network variance
 ```
 
-These are acceptance targets, not claims about every Linux system. A failure to meet them must produce profiling evidence before replacing the process adapter with native interop.
+These are validation targets, not claims for every machine. Native PipeWire interop requires profiling evidence that this adapter cannot meet them.
 
 ## Implementation slices
 
-### PR 1 — Linux capture adapter and shared seams
+### PR 1 — Adapter and shared seams
 
-- expose the minimal backend/probe construction seams;
-- centralize PCM level calculation;
-- add `SonicRelay.Platform.Linux` and tests;
-- implement `pw-dump` discovery;
-- implement supervised `pw-record` PCM capture;
-- validate frames through the existing WebRTC audio bridge using automated fakes and a real local Linux smoke test;
-- keep the desktop Linux startup behavior unchanged until the adapter is proven.
+- expose `IAudioCaptureBackend` and factory construction;
+- centralize level calculation;
+- add Linux project/tests;
+- implement discovery/default resolution;
+- implement supervised `pw-record` capture;
+- validate frames through the existing WebRTC audio bridge;
+- keep Linux desktop preview behavior until the adapter is proven.
 
-### PR 2 — Linux desktop composition
+### PR 2 — Desktop composition
 
 - add `DesktopRuntimeFactory`;
-- inject token store/runtime dependencies;
-- add Secret Service store plus in-memory fallback;
+- inject token/runtime dependencies;
+- add Secret Service plus in-memory fallback;
 - add XDG paths;
-- attach the real runtime on Linux instead of preview mode;
+- attach real Linux runtime instead of preview;
 - make tray capability explicit;
-- validate authentication, sink selection, sessions, reconnect, Direct, and Relay on Ubuntu.
+- validate auth, sinks, sessions, reconnect, Direct, and Relay.
 
-### PR 3 — CI, package, and release
+### PR 3 — CI and distribution
 
 - add Ubuntu build/test matrix;
-- add Linux desktop smoke tests;
+- add Linux startup smoke test;
 - publish `linux-x64`;
 - build `.tar.gz` and `.deb`;
-- add icons and `.desktop` entry;
+- add icon/desktop entry;
 - extend release notes/checksums;
-- document installation, dependencies, supported systems, diagnostics, and limitations.
+- document install, dependencies, supported systems, diagnostics, and limitations.
 
 ## Acceptance criteria
 
 ### Architecture
 
-- [ ] Windows and Linux use the same Avalonia views and view models.
+- [ ] Windows and Linux use the same Avalonia views/view models.
 - [ ] Linux-specific code is isolated in `SonicRelay.Platform.Linux` and desktop composition.
-- [ ] Presentation, signaling, API client, and WebRTC layers do not reference PipeWire tools.
-- [ ] The existing shared `AudioCaptureService` owns lifecycle/recovery on both platforms.
-- [ ] No broad project rename is required for the feature.
+- [ ] Presentation, signaling, API client, and WebRTC do not reference Linux tools.
+- [ ] Shared `AudioCaptureService` owns lifecycle/recovery on both platforms.
+- [ ] No broad project rename is required.
 
-### Linux runtime
+### Runtime/security
 
-- [ ] Linux launches the real application state, not `CreatePreview()`.
-- [ ] The application starts without root on Ubuntu 24.04 x64.
-- [ ] Missing platform dependencies produce actionable UI errors.
-- [ ] The user can authenticate with the existing backend.
-- [ ] Tokens are stored through Secret Service when available.
+- [ ] Linux launches real state, not `CreatePreview()`.
+- [ ] App starts without root on Ubuntu 24.04 x64.
+- [ ] Missing dependencies produce actionable errors.
+- [ ] User authenticates against the existing backend.
+- [ ] Secret Service persists tokens when available.
 - [ ] No plaintext token file is created.
-- [ ] Session-only auth remains usable when Secret Service is unavailable.
+- [ ] Session-only authentication works when secure storage is unavailable.
 
 ### Audio
 
-- [ ] `System default` capture works through PipeWire.
-- [ ] Available output sinks are listed with human-readable names.
-- [ ] A selected sink persists by stable `node.name`.
-- [ ] Captured data is 48 kHz stereo PCM16 and reaches the existing Opus/WebRTC pipeline.
-- [ ] The selected desktop output is captured, not the microphone.
-- [ ] Sink loss triggers bounded recovery and does not crash the UI.
-- [ ] Pause/resume and stop/dispose leave no orphan `pw-record` process.
+- [ ] Default sink is explicitly resolved and targeted.
+- [ ] Available sinks have human-readable names.
+- [ ] Selected sink persists by `node.name`.
+- [ ] Audio is 48 kHz stereo PCM16 and reaches existing Opus/WebRTC code.
+- [ ] Desktop output is captured; microphone is not.
+- [ ] Sink loss triggers bounded recovery without crashing UI/signaling.
+- [ ] Pause/resume/stop/dispose leave no orphan process.
 
-### Streaming
+### Streaming/desktop
 
-- [ ] Session creation and signaling work unchanged.
-- [ ] A Flutter viewer receives Linux desktop audio.
-- [ ] Direct mode works when network conditions permit.
-- [ ] forced TURN/Relay mode works.
-- [ ] RTT, jitter, loss, bitrate, viewer count, ICE mode, and audio level remain real data.
-- [ ] reconnection and session termination behave consistently with Windows.
+- [ ] Flutter viewer receives Linux desktop audio.
+- [ ] Direct and forced Relay modes work.
+- [ ] real RTT/jitter/loss/bitrate/viewer/ICE/audio metrics remain available.
+- [ ] reconnect and session termination match Windows behavior.
+- [ ] UI works on Ubuntu Wayland and Xorg sessions.
+- [ ] tray works on the release-gating GNOME environment.
+- [ ] without tray, closing exits normally.
 
-### Desktop integration
+### CI/distribution
 
-- [ ] The Avalonia UI is usable on Ubuntu Wayland and Xorg sessions.
-- [ ] Tray behavior works on the release-gating Ubuntu GNOME environment.
-- [ ] If tray is unavailable, closing exits instead of hiding an unreachable process.
-- [ ] settings and diagnostics use Linux/XDG paths.
+- [ ] Windows and Ubuntu checks are required.
+- [ ] Windows assets remain unchanged.
+- [ ] `.tar.gz` and `.deb` come from the same tag/commit.
+- [ ] artifacts include checksums/build metadata.
+- [ ] `.deb` install/upgrade/uninstall are validated.
+- [ ] normal execution requires no administrator privileges.
+- [ ] installation and limitations are documented.
 
-### CI and distribution
-
-- [ ] Windows and Ubuntu builds/tests are required checks.
-- [ ] Windows release assets remain unchanged.
-- [ ] Linux `.tar.gz` and `.deb` assets are generated from the same tag/commit.
-- [ ] Linux artifacts include SHA-256 checksums and build metadata.
-- [ ] `.deb` install/upgrade/uninstall are manually validated.
-- [ ] normal application execution requires no administrator privileges.
-- [ ] installation and known limitations are documented.
-
-## Risks and mitigations
+## Risks
 
 | Risk | Impact | Mitigation |
 |---|---:|---|
-| PipeWire CLI output/behavior differs across distributions | Medium | Officially support one Ubuntu LTS first; parse JSON defensively; check tool versions in diagnostics |
-| `pw-record` process adds latency or lifecycle edge cases | Medium | fixed 20 ms raw frames, bounded supervision, profiling targets, native interop only if evidence requires it |
-| selected node identifiers change | Medium | persist `node.name`; resolve current `object.serial` on every start; fallback to default |
-| tray unavailable on some Linux desktops | Medium | explicit capability; never hide the app without a reachable tray |
-| Secret Service unavailable or locked | Low | no plaintext fallback; use in-memory tokens and warn that restart requires login |
-| CI has no real user audio session | Medium | isolate process abstractions, use deterministic fakes, require real-desktop manual release gate |
-| Flatpak sandbox blocks the chosen integration | Low for this phase | Flatpak is out of scope and requires a separate portal/sandbox design |
-| Windows regresses while shared seams change | High | keep existing constructor/path compatibility; run full Windows CI and release smoke tests |
+| CLI output differs across versions | Medium | one official Ubuntu LTS, defensive parsing, tool versions in diagnostics |
+| `pw-record` adds latency/lifecycle edges | Medium | fixed frames, bounded supervision, profiling gate before native interop |
+| IDs change | Medium | persist `node.name`; resolve live serial/name every start |
+| default auto-target captures microphone | High | never use auto; explicitly inspect and target `@DEFAULT_AUDIO_SINK@` |
+| tray unavailable | Medium | capability-based behavior; never hide unreachable app |
+| Secret Service unavailable | Low | in-memory fallback, warning, no plaintext |
+| CI has no real audio session | Medium | fake process tests plus real-desktop manual gate |
+| Windows regression | High | keep compatibility seams and full Windows CI/release tests |
 
-## Documentation changes required during implementation
+## Documentation required
 
 Update:
 
-- `README.md` — Windows and Linux support, downloads, quick start;
-- `docs/architecture.md` — platform composition and Linux adapter;
-- `docs/windows-publisher.md` — rename or split into desktop publisher documentation without breaking existing links;
-- new `docs/linux-publisher.md` — installation, dependencies, device selection, troubleshooting, diagnostics, supported environments;
-- release notes — platform-specific assets and limitations;
-- issue #32 — phase checklist and final validation evidence.
+- `README.md`;
+- `docs/architecture.md`;
+- `docs/windows-publisher.md` or split it without breaking links;
+- add `docs/linux-publisher.md`;
+- release notes;
+- issue #32 with phase checklist and validation evidence.
 
-## Final design decisions
+## Final decisions
 
 ```text
-ADR-LINUX-001: Reuse the existing Avalonia shell; do not create a second Linux UI.
-ADR-LINUX-002: Use PipeWire as the primary Linux audio system.
-ADR-LINUX-003: Use supervised pw-dump/pw-record processes for the first supported release.
-ADR-LINUX-004: Normalize capture to 48 kHz stereo PCM16, 20 ms frames.
-ADR-LINUX-005: Persist sink preference by node.name and resolve the live target at start.
-ADR-LINUX-006: Use Secret Service via secret-tool; never fall back to plaintext token storage.
-ADR-LINUX-007: Officially support Ubuntu 24.04 x64 first.
-ADR-LINUX-008: Ship .deb and portable .tar.gz; defer sandboxed packaging.
-ADR-LINUX-009: Tray is capability-based; the app must never become invisibly unreachable.
-ADR-LINUX-010: Keep historical Windows-prefixed project names during this phase to minimize churn.
+ADR-LINUX-001: Reuse the existing Avalonia shell.
+ADR-LINUX-002: Use PipeWire/WirePlumber as the Linux audio stack.
+ADR-LINUX-003: Use supervised pw-dump/wpctl/pw-record for the first release.
+ADR-LINUX-004: Explicitly resolve and target an output sink; never use record auto-target.
+ADR-LINUX-005: Normalize capture to 48 kHz stereo PCM16 with 20 ms frames.
+ADR-LINUX-006: Persist sink preference by node.name.
+ADR-LINUX-007: Use Secret Service via secret-tool; never plaintext fallback.
+ADR-LINUX-008: Officially support Ubuntu 24.04 x64 first.
+ADR-LINUX-009: Ship .deb and portable .tar.gz; defer sandboxed packages.
+ADR-LINUX-010: Tray is capability-based.
+ADR-LINUX-011: Keep historical Windows-prefixed project names during this phase.
 ```
 
-## Primary technical references
+## Primary references
 
-- Avalonia Desktop Linux deployment: https://docs.avaloniaui.net/docs/deployment/linux
+- Avalonia Linux deployment: https://docs.avaloniaui.net/docs/deployment/linux
 - Avalonia TrayIcon: https://docs.avaloniaui.net/controls/navigation/trayicon
-- PipeWire `pw-cat` / `pw-record`: https://docs.pipewire.org/page_man_pw-cat_1.html
-- XDG Desktop Portal ScreenCast: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html
+- PipeWire `pw-record`: https://docs.pipewire.org/page_man_pw-cat_1.html
+- WirePlumber `wpctl`: https://pipewire.pages.freedesktop.org/wireplumber/tools/wpctl.html
+- XDG ScreenCast portal: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html
