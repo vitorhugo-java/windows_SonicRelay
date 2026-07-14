@@ -139,6 +139,7 @@ if (Test-Path -LiteralPath $releaseWorkflowPath) {
         'Release build' = 'dotnet build SonicRelay\.Windows\.slnx --configuration Release --no-restore'
         'repository structure test' = 'tests/Repository\.Structure\.Tests\.ps1'
         'solution tests' = 'dotnet test SonicRelay\.Windows\.slnx --configuration Release --no-build --no-restore'
+        'runtime-specific publish restore' = '(?s)dotnet restore src/SonicRelay\.Windows\.Desktop/SonicRelay\.Windows\.Desktop\.csproj.*?--runtime win-x64'
         'Windows x64 publish' = '(?s)dotnet publish src/SonicRelay\.Windows\.Desktop/SonicRelay\.Windows\.Desktop\.csproj.*?--runtime win-x64'
         'self-contained publish' = '--self-contained true'
         'portable archive name' = 'SonicRelay\.WindowsPublisher-win-x64-\$version\.zip'
