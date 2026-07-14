@@ -45,6 +45,8 @@ After build and tests pass on non-PR runs, the workflow publishes Windows x64 re
 
 Package artifacts are uploaded back to the workflow run. Pushing a tag matching `v*` (for example, `v0.1.0`) or running the workflow manually also publishes those assets to GitHub Releases. Manual runs without a version create a prerelease tag named `dev-<run-number>`.
 
+The separate **Release** workflow (`.github/workflows/release.yml`) publishes on `v*` tags and can also be dispatched manually. On a manual run you can set the optional `pr_number` input: the workflow then checks out **that pull request's head**, runs the full build and tests, and publishes the same ZIP/EXE/MSI assets as a **prerelease** tagged `v0.0.0-alpha.pr<number>.<run-number>` targeting the PR's commit — an alpha test build straight from a PR, without merging. A manual run without `pr_number` builds the selected branch as a `v0.0.0-manual.<run-number>` prerelease.
+
 The package flow keeps the app unpackaged and per-user. It does not introduce services, drivers, firewall changes, machine-wide writes, or an administrator requirement for normal usage. The generated packages are currently unsigned.
 
 The app is an unpackaged Avalonia executable. Select `SonicRelay.Windows.Desktop` as the startup project when launching it from an IDE.
