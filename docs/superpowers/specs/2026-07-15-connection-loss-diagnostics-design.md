@@ -26,8 +26,13 @@ server-side change (tracked separately in `dotnet_SonicRelay`).
   process start, best-effort (I/O errors are swallowed the same way `WriteAsync` already
   swallows them — diagnostics must never interrupt publisher operation).
 - **Clear**: a new `ClearAsync()` method deletes every `publisher-*.jsonl` file under the
-  log directory and empties `RecentEvents`. Guarded by the same `writeLock` used for
-  writes, so a clear can't race an in-flight append.
+  log directory and empties `RecentEvents`. `WriteAsync` currently updates `RecentEvents`
+  *before* acquiring `writeLock` and only appends to disk once it has the lock; holding
+  `writeLock` in `ClearAsync` alone would not stop a write already past that in-memory
+  update from landing on disk right after the clear. `WriteAsync` needs to move its
+  `RecentEvents` update inside the same `writeLock` critical section as the disk append,
+  so both mutations serialize with `ClearAsync` as one unit — only then does holding
+  `writeLock` in `ClearAsync` guarantee no write can reappear after a clear.
 
 New call sites write additional `DiagnosticEvent` categories through the existing
 `WriteDiagnosticAsync` wrapper in `PublisherRuntime`:
