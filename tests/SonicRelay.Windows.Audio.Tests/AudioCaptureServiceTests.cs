@@ -31,6 +31,23 @@ public sealed class AudioCaptureServiceTests
     }
 
     [Fact]
+    public async Task CreateFactoryProducesAWorkingService()
+    {
+        var backend = new FakeAudioCaptureBackend();
+        var probe = new FakeOutputDeviceProbe([new AudioOutputDevice("sink-1", "Sink 1", true)]);
+
+        await using var service = AudioCaptureService.Create(backend, probe);
+
+        Assert.Equal(AudioCaptureState.Stopped, service.State);
+        Assert.Single(service.GetOutputDevices());
+
+        await service.StartAsync();
+
+        Assert.Equal(AudioCaptureState.Capturing, service.State);
+        Assert.Equal(1, backend.StartCount);
+    }
+
+    [Fact]
     public async Task FramesUpdateDiagnosticsAndAreForwarded()
     {
         var backend = new FakeAudioCaptureBackend();

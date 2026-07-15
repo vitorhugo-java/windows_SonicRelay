@@ -76,6 +76,18 @@ public sealed class AudioCaptureService : IAudioCaptureService
         _backend.Faulted += OnBackendFaulted;
     }
 
+    /// <summary>
+    /// Platform-neutral composition entry point (issue #32): any platform shell
+    /// supplies its own <see cref="IAudioCaptureBackend"/> (WASAPI on Windows,
+    /// PipeWire on Linux) and device probe, and gets the same lifecycle,
+    /// recovery, and diagnostics behavior either way.
+    /// </summary>
+    public static AudioCaptureService Create(
+        IAudioCaptureBackend backend,
+        IAudioOutputDeviceProbe deviceProbe,
+        AudioRecoveryPolicy? recoveryPolicy = null) =>
+        new(backend, recoveryPolicy: recoveryPolicy, deviceProbe: deviceProbe);
+
     private static bool IsRetryable(AudioCaptureError error) =>
         error is AudioCaptureError.DeviceLost or AudioCaptureError.NoDevice;
 
@@ -112,7 +124,7 @@ public sealed class AudioCaptureService : IAudioCaptureService
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
-                SetFailure(new AudioCaptureException(AudioCaptureError.PlatformFailure, "Windows audio capture could not be started.", error));
+                SetFailure(new AudioCaptureException(AudioCaptureError.PlatformFailure, "Audio capture could not be started.", error));
             }
         }
         finally { _lifecycle.Release(); }
@@ -265,7 +277,7 @@ public sealed class AudioCaptureService : IAudioCaptureService
             }
             catch (Exception unexpected)
             {
-                SetFailure(new AudioCaptureException(AudioCaptureError.PlatformFailure, "Windows audio recovery failed.", unexpected));
+                SetFailure(new AudioCaptureException(AudioCaptureError.PlatformFailure, "Audio recovery failed.", unexpected));
                 return;
             }
             finally
