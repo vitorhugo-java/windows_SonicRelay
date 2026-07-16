@@ -185,6 +185,23 @@ public sealed class MainWindowViewModel : ViewModelBase
     private Task Run(Func<PublisherWorkflow, Task> action) =>
         workflow is null ? Task.CompletedTask : action(workflow);
 
+    /// <summary>
+    /// Forwards a diagnostic event to the attached runtime's log, or does nothing if no
+    /// runtime is attached (the standalone preview launch). Diagnostics must never throw
+    /// into the caller, matching PublisherRuntime.WriteDiagnosticAsync's own guarantee.
+    /// </summary>
+    public void LogDiagnostic(string category, string message)
+    {
+        if (runtime is null) return;
+        _ = LogAsync(runtime.DiagnosticLog, category, message);
+
+        static async Task LogAsync(SonicRelay.Windows.Core.Diagnostics.DiagnosticLog log, string category, string message)
+        {
+            try { await log.WriteAsync(category, message); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ObjectDisposedException) { }
+        }
+    }
+
     private void RaiseCommandStates()
     {
         CreateSessionCommand.RaiseCanExecuteChanged();
