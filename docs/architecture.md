@@ -85,6 +85,19 @@ Adapters are composed at the shell's composition root (today `App`/`MainWindow`
 construct the Windows adapters and hand `IAudioCaptureService` to
 `PublisherRuntime.Create`); the shared layer only ever sees the contracts.
 
+### Linux audio adapter (issue #32, PR 1 of the Linux design)
+
+`SonicRelay.Platform.Linux` implements `IAudioCaptureBackend` and
+`IAudioOutputDeviceProbe` over PipeWire/WirePlumber (`pw-dump`, `wpctl
+inspect`, `pw-record`), following
+[`2026-07-14-linux-desktop-publisher-design.md`](superpowers/specs/2026-07-14-linux-desktop-publisher-design.md).
+It is proven against the shared `AudioCaptureService`/`WebRtcAudioBridge`
+pipeline by unit and integration tests using fake process runners; it is not
+yet wired into `SonicRelay.Windows.Desktop` (`App.axaml.cs` still calls
+`CreatePreview()` on Linux) or built/packaged in CI. That composition, Secret
+Service token storage, XDG paths, and Linux CI/distribution are follow-up
+work (spec PR 2 and PR 3).
+
 ### Interface states
 
 `PublisherUiState` defines the canonical states every shell must represent —
