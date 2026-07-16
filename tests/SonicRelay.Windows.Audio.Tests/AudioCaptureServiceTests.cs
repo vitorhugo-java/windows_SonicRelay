@@ -67,6 +67,24 @@ public sealed class AudioCaptureServiceTests
     }
 
     [Fact]
+    public async Task FrameEmittedDuringStartAsyncIsNotDropped()
+    {
+        // A backend's first frame can legitimately arrive before its own
+        // StartAsync returns (PipeWireProcessBackend does exactly this), which
+        // means the service is still in Starting when FrameAvailable fires.
+        // That frame must still be accepted, not silently dropped.
+        var backend = new FakeAudioCaptureBackend { EmitFrameOnStart = true };
+        await using var service = new AudioCaptureService(backend);
+        AudioFrame? received = null;
+        service.FrameCaptured += frame => received = frame;
+
+        await service.StartAsync();
+
+        Assert.NotNull(received);
+        Assert.Equal(1, service.Diagnostics.FramesCaptured);
+    }
+
+    [Fact]
     public async Task StartFailureIsMappedWithoutEscapingAndCanBeStopped()
     {
         var backend = new FakeAudioCaptureBackend { StartError = new AudioCaptureException(AudioCaptureError.NoDevice, "No render device is available.") };
@@ -129,8 +147,16 @@ public sealed class AudioCaptureServiceTests
     }
 
     [Fact]
-    public async Task RecoveryDropsFramesWhileRecovering()
+    public async Task FramesEmittedWhileRecoveringAreAcceptedNotDropped()
     {
+        // Previously any frame arriving while State == Recovering was
+        // dropped. That silently discarded a backend's legitimate first
+        // frame after a successful restart, because RecoverAsync only
+        // transitions out of Recovering *after* the backend's own
+        // StartAsync returns, and a backend (e.g. PipeWireProcessBackend)
+        // can raise FrameAvailable for its first frame before that call
+        // returns. Recovering now accepts frames for the same reason
+        // Starting does — see OnFrameAvailable.
         var lost = new AudioCaptureException(AudioCaptureError.DeviceLost, "device invalidated");
         var gate = new TaskCompletionSource();
         var backend = new ScriptedRecoveryBackend((AudioCaptureException?)null);
@@ -144,7 +170,7 @@ public sealed class AudioCaptureServiceTests
         backend.Fail(lost); // -> Recovering, parked on the delay gate
         await WaitUntilAsync(() => service.State == AudioCaptureState.Recovering, timeout.Token);
         backend.Emit(new AudioFrame([1, 0], 48_000, 1, AudioSampleFormat.Pcm16, TimeSpan.Zero), AudioLevelSnapshot.Silence);
-        Assert.Equal(0, frames);
+        Assert.Equal(1, frames);
 
         gate.SetResult(); // let recovery proceed and reconnect
         await WaitUntilAsync(() => service.State == AudioCaptureState.Capturing, timeout.Token);
@@ -258,6 +284,14 @@ internal sealed class FakeAudioCaptureBackend : IAudioCaptureBackend
     public AudioCaptureException? StartError { get; init; }
     public AudioCaptureException? PauseError { get; init; }
     public AudioDeviceInfo? Device { get; private set; }
+
+    /// <summary>
+    /// When true, emits a frame synchronously from within StartAsync, right
+    /// before it returns — mirroring PipeWireProcessBackend, whose first frame
+    /// is raised before its own StartAsync completes.
+    /// </summary>
+    public bool EmitFrameOnStart { get; init; }
+
     public event Action<AudioFrame, AudioLevelSnapshot>? FrameAvailable;
     public event Action<AudioCaptureException>? Faulted;
 
@@ -266,6 +300,10 @@ internal sealed class FakeAudioCaptureBackend : IAudioCaptureBackend
         StartCount++;
         if (StartError is not null) throw StartError;
         Device = new AudioDeviceInfo("default", "Default speakers", 48_000, 2, AudioSampleFormat.IeeeFloat32);
+        if (EmitFrameOnStart)
+        {
+            Emit(new AudioFrame([0, 0, 255, 127], 48_000, 1, AudioSampleFormat.Pcm16, TimeSpan.Zero), new AudioLevelSnapshot(1f, 0.707f));
+        }
         return Task.CompletedTask;
     }
 

@@ -7,6 +7,7 @@ namespace SonicRelay.Platform.Linux.Tests;
 public sealed class PipeWireSinkResolverTests
 {
     private static readonly PipeWireCommandPaths Paths = new("pw-dump", "pw-record", "wpctl", "secret-tool");
+    private static readonly string[] ExpectedInspectDefaultSinkArguments = ["inspect", "@DEFAULT_AUDIO_SINK@"];
 
     private const string DefaultInspectOutput = """
     id 55, type PipeWire:Interface:Node
@@ -34,7 +35,7 @@ public sealed class PipeWireSinkResolverTests
 
         Assert.Equal("alsa_output.default", resolved.NodeName);
         Assert.Equal("55", resolved.ObjectSerial);
-        Assert.Contains(runner.RunCalls, call => call.Executable == "wpctl" && call.Arguments.SequenceEqual(new[] { "inspect", "@DEFAULT_AUDIO_SINK@" }));
+        Assert.Contains(runner.RunCalls, call => call.Executable == "wpctl" && call.Arguments.SequenceEqual(ExpectedInspectDefaultSinkArguments));
     }
 
     [Fact]

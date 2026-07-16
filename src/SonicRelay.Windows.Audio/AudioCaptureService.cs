@@ -201,7 +201,13 @@ public sealed class AudioCaptureService : IAudioCaptureService
 
     private void OnFrameAvailable(AudioFrame frame, AudioLevelSnapshot level)
     {
-        if (State != AudioCaptureState.Capturing) return;
+        // A backend's first frame after a (re)start can legitimately arrive
+        // before the service's own state transition to Capturing catches up
+        // (PipeWireProcessBackend deliberately raises FrameAvailable for its
+        // first frame before its own StartAsync returns), so Starting and
+        // Recovering must also accept frames or that first ~20ms is silently
+        // dropped on every cold start and every recovery cycle.
+        if (State is not (AudioCaptureState.Capturing or AudioCaptureState.Starting or AudioCaptureState.Recovering)) return;
         _diagnostics = _diagnostics with
         {
             Level = level,

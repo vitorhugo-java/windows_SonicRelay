@@ -149,6 +149,29 @@ public sealed class PipeWireProcessBackendTests
     }
 
     [Fact]
+    public async Task StartAsyncAfterUnexpectedExitWithoutStopIsANoOp()
+    {
+        // Documents the restart invariant on StartAsync's XML doc: after an
+        // unexpected exit raises Faulted, a caller must call StopAsync before
+        // calling StartAsync again. AudioCaptureService (the only current
+        // caller) always stops before restarting, so this is currently
+        // unreachable in practice, but it must stay a deliberate no-op rather
+        // than an accidental regression if that contract ever changes.
+        var (backend, runner) = CreateBackend();
+        var startTask = backend.StartAsync(CancellationToken.None);
+        await Task.Delay(50);
+        runner.LastStartedProcess!.Write(new byte[BytesPerFrame]);
+        await startTask;
+
+        runner.LastStartedProcess!.RaiseExited(1);
+        await Task.Delay(50);
+
+        await backend.StartAsync(CancellationToken.None);
+
+        Assert.Single(runner.StartCalls);
+    }
+
+    [Fact]
     public async Task CallerCancellationDuringStartupStopsTheProcessInsteadOfOrphaningIt()
     {
         // Regression coverage for the class of bug fixed in Task 4: cancelling the

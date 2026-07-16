@@ -49,6 +49,22 @@ public sealed class PipeWireProcessBackend : IAudioCaptureBackend
     public event Action<AudioFrame, AudioLevelSnapshot>? FrameAvailable;
     public event Action<AudioCaptureException>? Faulted;
 
+    /// <summary>
+    /// Starts supervising a new `pw-record` process. No-op if a process is
+    /// already tracked.
+    /// </summary>
+    /// <remarks>
+    /// Invariant: after an unexpected exit raises <see cref="Faulted"/>, the
+    /// caller must call <see cref="StopAsync"/> before calling this again.
+    /// The dead process's <c>process</c>/<c>readCancellation</c>/<c>readTask</c>
+    /// fields are only cleared inside <see cref="StopInternalAsync"/>, so
+    /// calling this directly after a <see cref="Faulted"/> notification —
+    /// without an intervening <see cref="StopAsync"/> — is a no-op (the
+    /// `process is not null` guard below short-circuits against the still-set,
+    /// now-dead process). This matches the only current caller,
+    /// <c>AudioCaptureService</c>, which always calls <see cref="StopAsync"/>
+    /// before restarting.
+    /// </remarks>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
