@@ -38,6 +38,7 @@ internal sealed class FakeLinuxProcessRunner : ILinuxProcessRunner
 {
     private readonly Dictionary<string, LinuxProcessResult> scriptedResults = new();
     public List<(string Executable, IReadOnlyList<string> Arguments)> RunCalls { get; } = [];
+    public List<(string Executable, IReadOnlyList<string> Arguments)> StartCalls { get; } = [];
     public FakeLinuxProcess? LastStartedProcess { get; private set; }
 
     public void Script(string executable, LinuxProcessResult result) => scriptedResults[executable] = result;
@@ -52,6 +53,7 @@ internal sealed class FakeLinuxProcessRunner : ILinuxProcessRunner
 
     public ILinuxProcess Start(string executable, IReadOnlyList<string> arguments)
     {
+        StartCalls.Add((executable, arguments));
         LastStartedProcess = new FakeLinuxProcess();
         return LastStartedProcess;
     }

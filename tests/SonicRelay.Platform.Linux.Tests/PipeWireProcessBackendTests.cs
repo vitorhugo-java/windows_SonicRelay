@@ -9,6 +9,9 @@ public sealed class PipeWireProcessBackendTests
     private const int BytesPerFrame = 3840;
     private static readonly PipeWireCommandPaths Paths = new("pw-dump", "pw-record", "wpctl", "secret-tool");
 
+    private static readonly string[] ExpectedPwRecordArguments =
+        ["--raw", "--rate=48000", "--channels=2", "--format=s16", "--latency=20ms", "--target=55", "-"];
+
     private const string DefaultInspectOutput = """
     id 55, type PipeWire:Interface:Node
      * node.name = "alsa_output.default"
@@ -36,8 +39,10 @@ public sealed class PipeWireProcessBackendTests
         await startTask;
 
         Assert.Equal("alsa_output.default", backend.Device!.Id);
-        var pwRecordCall = runner.RunCalls; // pw-record goes through Start(), not RunAsync
-        Assert.Contains(new[] { "--target=55" }, arg => true); // sanity: no exception constructing args
+        Assert.Single(runner.StartCalls);
+        var (executable, arguments) = runner.StartCalls[0];
+        Assert.Equal(Paths.PwRecord, executable);
+        Assert.Equal(ExpectedPwRecordArguments, arguments);
     }
 
     [Fact]
