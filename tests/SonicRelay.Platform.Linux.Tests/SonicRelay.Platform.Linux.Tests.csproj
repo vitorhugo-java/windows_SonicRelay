@@ -14,5 +14,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SonicRelay.Platform.Linux/SonicRelay.Platform.Linux.csproj" />
+    <ProjectReference Include="../../src/SonicRelay.Windows.Presentation/SonicRelay.Windows.Presentation.csproj" />
+    <ProjectReference Include="../../src/SonicRelay.Windows.WebRtc/SonicRelay.Windows.WebRtc.csproj" />
+    <ProjectReference Include="../../src/SonicRelay.Windows.Signaling/SonicRelay.Windows.Signaling.csproj" />
   </ItemGroup>
 </Project>
