@@ -34,6 +34,16 @@ public static class DesktopRuntimeFactory
         var processRunner = new LinuxProcessRunner();
         var resolver = new PipeWireSinkResolver(processRunner, commandPaths);
         var probe = new PipeWireOutputDeviceProbe(processRunner, commandPaths);
+        // On Windows, IAudioCaptureService.SelectOutputDevice() is the live routing
+        // switch: it updates AudioCaptureService's own internal selection, which
+        // WasapiLoopbackBackend reads on its next start. AudioCaptureService.Create's
+        // internal selection has no seam this composition root can reach, so the
+        // Linux backend instead reads the shared, persisted AudioOutputPreferenceStore
+        // directly. AudioPageViewModel's device picker updates both the enumerator and
+        // this store together, so the two stay in sync in practice today — but a
+        // future caller that only calls SelectOutputDevice() (bypassing the store)
+        // would silently have no effect on Linux capture routing. Keep this in mind
+        // before adding a new output-device selection path on either platform.
         var audioOutputPreference = new AudioOutputPreferenceStore();
         var backend = new PipeWireProcessBackend(processRunner, commandPaths, resolver, () => audioOutputPreference.SelectedDeviceId);
         var audioCapture = AudioCaptureService.Create(backend, probe);
