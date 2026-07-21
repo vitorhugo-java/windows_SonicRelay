@@ -41,7 +41,8 @@ public sealed class PublisherRuntime : IAsyncDisposable
         AudioQualityStore audioQuality,
         IAudioCaptureService audioCapture,
         AudioOutputPreferenceStore audioOutput,
-        DiagnosticLog diagnosticLog)
+        DiagnosticLog diagnosticLog,
+        ITokenStore tokenStore)
     {
         this.httpClient = httpClient;
         this.peers = peers;
@@ -54,6 +55,7 @@ public sealed class PublisherRuntime : IAsyncDisposable
         AudioCapture = audioCapture;
         AudioOutput = audioOutput;
         DiagnosticLog = diagnosticLog;
+        TokenStore = tokenStore;
         ReportExporter = new DiagnosticReportExporter();
         Workflow.StateChanged += OnWorkflowStateChanged;
         _ = WriteDiagnosticAsync("runtime", "Publisher runtime configured.", new Dictionary<string, string>
@@ -70,15 +72,21 @@ public sealed class PublisherRuntime : IAsyncDisposable
     public AudioOutputPreferenceStore AudioOutput { get; }
     public DiagnosticLog DiagnosticLog { get; }
     public DiagnosticReportExporter ReportExporter { get; }
+    public ITokenStore TokenStore { get; }
     public IWebRtcPublisher WebRtcPublisher => webRtcPublisher;
 
     /// <summary>
     /// Composes the shared publisher runtime for one backend. The platform shell
     /// supplies its capture implementation (WASAPI loopback on Windows, PipeWire on
-    /// Linux later — issue #32); this shared composition never references a concrete
-    /// capture backend.
+    /// Linux — issue #32) and, optionally, its own token store and audio-output
+    /// preference store (Linux uses Secret Service instead of DPAPI); omitting
+    /// either keeps the existing Windows-default behavior.
     /// </summary>
-    public static PublisherRuntime Create(Uri backendBaseUrl, IAudioCaptureService audioCapture)
+    public static PublisherRuntime Create(
+        Uri backendBaseUrl,
+        IAudioCaptureService audioCapture,
+        ITokenStore? tokenStoreOverride = null,
+        AudioOutputPreferenceStore? audioOutputPreferenceOverride = null)
     {
         ArgumentNullException.ThrowIfNull(backendBaseUrl);
         ArgumentNullException.ThrowIfNull(audioCapture);
@@ -91,7 +99,7 @@ public sealed class PublisherRuntime : IAsyncDisposable
         var signalingUrl = new Uri(normalized, "ws/signaling");
         var configuration = new PublisherConfiguration(normalized, signalingUrl, 4);
         configuration.Validate();
-        var tokenStore = new UserScopedTokenStore();
+        var tokenStore = tokenStoreOverride ?? new UserScopedTokenStore();
         var http = new HttpClient { BaseAddress = normalized, Timeout = TimeSpan.FromSeconds(30) };
 
         var diagnosticLog = new DiagnosticLog();
@@ -124,7 +132,7 @@ public sealed class PublisherRuntime : IAsyncDisposable
         webRtcPublisher.IceRestartRequested += viewerId => LogIceRestart(diagnosticLog, viewerId);
 
         var audio = audioCapture;
-        var audioOutput = new AudioOutputPreferenceStore();
+        var audioOutput = audioOutputPreferenceOverride ?? new AudioOutputPreferenceStore();
         // Restore the previously selected output device (null = system default).
         audio.SelectOutputDevice(audioOutput.SelectedDeviceId);
         var audioBridge = new WebRtcAudioBridge(audio, webRtcPublisher);
@@ -135,7 +143,7 @@ public sealed class PublisherRuntime : IAsyncDisposable
             signaling,
             audio,
             Environment.MachineName);
-        return new PublisherRuntime(http, workflow, normalized, peers, webRtcPublisher, audioBridge, relayPreference, audioQuality, audio, audioOutput, diagnosticLog);
+        return new PublisherRuntime(http, workflow, normalized, peers, webRtcPublisher, audioBridge, relayPreference, audioQuality, audio, audioOutput, diagnosticLog, tokenStore);
     }
 
     private void OnWorkflowStateChanged(PublisherSnapshot state)
