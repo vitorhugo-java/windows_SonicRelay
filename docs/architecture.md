@@ -92,11 +92,30 @@ construct the Windows adapters and hand `IAudioCaptureService` to
 inspect`, `pw-record`), following
 [`2026-07-14-linux-desktop-publisher-design.md`](superpowers/specs/2026-07-14-linux-desktop-publisher-design.md).
 It is proven against the shared `AudioCaptureService`/`WebRtcAudioBridge`
-pipeline by unit and integration tests using fake process runners; it is not
-yet wired into `SonicRelay.Windows.Desktop` (`App.axaml.cs` still calls
-`CreatePreview()` on Linux) or built/packaged in CI. That composition, Secret
-Service token storage, XDG paths, and Linux CI/distribution are follow-up
-work (spec PR 2 and PR 3).
+pipeline by unit and integration tests using fake process runners.
+
+### Linux desktop composition (issue #32, PR 2 of the Linux design)
+
+`DesktopRuntimeFactory` (`src/SonicRelay.Windows.Desktop/DesktopRuntimeFactory.cs`) is
+the platform composition root: on Windows it composes WASAPI capture with DPAPI
+token storage (unchanged); on Linux it composes `SonicRelay.Platform.Linux`'s
+`PipeWireProcessBackend`/`PipeWireOutputDeviceProbe` with a new Secret-Service-backed
+`SecretServiceTokenStore` (falling back to an in-memory, session-only store when
+Secret Service is unavailable — never a plaintext file). `App.axaml.cs` now attaches
+a real runtime on both platforms instead of falling back to
+`MainWindowViewModel.CreatePreview()` on Linux; `CreatePreview()` remains only for
+the Avalonia designer and headless render tests.
+
+Not yet covered: XDG-specific config/state/cache directory layout (the existing
+`Environment.SpecialFolder.LocalApplicationData`-based paths already resolve
+correctly on Linux via .NET's BCL, so this was not blocking), user-visible
+actionable startup error messaging when a Linux capture dependency is missing
+(today it silently falls back to the sign-in surface, matching existing Windows
+behavior — not a regression, but short of the design spec's "actionable platform
+error" ask), and — as before — Linux CI/packaging/distribution, tracked in a
+separate follow-up (spec PR 3, issue #40). Manual, real-desktop validation (Ubuntu
+24.04, real PipeWire session, real Secret Service, real tray) has not been
+performed in this environment and remains the release gate per the design spec.
 
 ### Interface states
 
