@@ -72,4 +72,30 @@ public sealed class LinuxProcessRunnerTests
         var result = await exitCodeReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(0, result);
     }
+
+    [Fact]
+    public async Task RunAsyncWritesStandardInputAndClosesItBeforeWaitingForExit()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var runner = new LinuxProcessRunner();
+        var result = await runner.RunAsync("/bin/cat", [], TimeSpan.FromSeconds(5), CancellationToken.None, standardInput: "hello from stdin");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hello from stdin", result.StandardOutput);
+    }
+
+    [Fact]
+    public async Task RunAsyncClosesStandardInputEvenWithoutInputSoAReaderDoesNotHang()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var runner = new LinuxProcessRunner();
+        // /bin/cat with no input reads until stdin is closed (EOF); if RunAsync never
+        // closes it, this call would hang until the 5s timeout instead of returning fast.
+        var result = await runner.RunAsync("/bin/cat", [], TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardOutput);
+    }
 }

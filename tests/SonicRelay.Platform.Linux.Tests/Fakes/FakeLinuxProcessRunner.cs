@@ -37,15 +37,15 @@ internal sealed class FakeLinuxProcess : ILinuxProcess
 internal sealed class FakeLinuxProcessRunner : ILinuxProcessRunner
 {
     private readonly Dictionary<string, LinuxProcessResult> scriptedResults = new();
-    public List<(string Executable, IReadOnlyList<string> Arguments)> RunCalls { get; } = [];
+    public List<(string Executable, IReadOnlyList<string> Arguments, string? StandardInput)> RunCalls { get; } = [];
     public List<(string Executable, IReadOnlyList<string> Arguments)> StartCalls { get; } = [];
     public FakeLinuxProcess? LastStartedProcess { get; private set; }
 
     public void Script(string executable, LinuxProcessResult result) => scriptedResults[executable] = result;
 
-    public Task<LinuxProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken cancellationToken)
+    public Task<LinuxProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken cancellationToken, string? standardInput = null)
     {
-        RunCalls.Add((executable, arguments));
+        RunCalls.Add((executable, arguments, standardInput));
         return Task.FromResult(scriptedResults.TryGetValue(executable, out var result)
             ? result
             : new LinuxProcessResult(1, string.Empty, "not scripted"));

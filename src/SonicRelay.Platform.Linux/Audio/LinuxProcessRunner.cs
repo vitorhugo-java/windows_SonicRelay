@@ -18,7 +18,8 @@ public interface ILinuxProcessRunner
         string executable,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? standardInput = null);
 
     ILinuxProcess Start(string executable, IReadOnlyList<string> arguments);
 }
@@ -35,7 +36,8 @@ public sealed class LinuxProcessRunner : ILinuxProcessRunner
         string executable,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? standardInput = null)
     {
         var startInfo = BuildStartInfo(executable, arguments);
         using var process = new Process { StartInfo = startInfo };
@@ -47,6 +49,15 @@ public sealed class LinuxProcessRunner : ILinuxProcessRunner
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+
+        // Always close stdin, even when nothing is written: a command that reads
+        // until EOF (e.g. `secret-tool store`, or `cat` in tests) would otherwise
+        // block until the timeout instead of completing once its input is done.
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteAsync(standardInput).ConfigureAwait(false);
+        }
+        process.StandardInput.Close();
 
         using var timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCancellation.CancelAfter(timeout);
